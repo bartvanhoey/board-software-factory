@@ -27,14 +27,16 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # v1.2.3 -> tags 1.2.3, 1.2 and latest
+      # v1.2.3 -> tags 1.2.3, 1.2 and latest. A pre-release tag (v1.3.0-rc1) does not move latest.
       - id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE }}
+          flavor: latest=false
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
 
       - uses: docker/build-push-action@v6
         with:
