@@ -17,6 +17,9 @@ export function dryRunGh(real: Gh, print: (line: string) => void): Gh {
     async comment(repo: string, number: number, body: string) {
       print(fmt("comment", [repo, number, body]));
     },
+    async closeIssue(repo: string, number: number) {
+      print(fmt("closeIssue", [repo, number]));
+    },
     async markPrReady(repo: string, number: number) {
       print(fmt("markPrReady", [repo, number]));
     },

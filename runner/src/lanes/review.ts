@@ -118,10 +118,57 @@ export async function runReviewLane(deps: ReviewDeps, opts: ReviewOptions): Prom
     }
   };
 
+  /**
+   * A card in `review` whose `issue-<n>` PR was merged without the factory (a human merged it, and the PR may lack
+   * `Closes #<n>`): close the issue and drop its review label. Any doubt means null and the card is left alone.
+   */
+  const closeIfMerged = async (candidate: number): Promise<Extract<ReviewResult, { status: "merged" }> | null> => {
+    let pr: { number: number; url: string } | null;
+    try {
+      pr = await gh.findMergedPr(repo, `issue-${candidate}`);
+    } catch (e) {
+      say(`could not look for a merged PR of issue-${candidate}: ${errorMessage(e)}`);
+      return null;
+    }
+    if (pr === null) return null;
+    say(`PR #${pr.number} of issue-${candidate} is already merged: closing #${candidate}`);
+    try {
+      await gh.closeIssue(repo, candidate);
+    } catch (e) {
+      say(`could not close issue #${candidate}: ${errorMessage(e)}`);
+      return null;
+    }
+    emit("merged", `PR #${pr.number} was merged outside the factory`, { issue: candidate, url: pr.url });
+    try {
+      await gh.editIssue(repo, candidate, { removeLabels: ["review"] });
+    } catch (e) {
+      say(`closed #${candidate}, but removing the review label failed: ${errorMessage(e)}`);
+    }
+    try {
+      await gh.comment(repo, candidate, `[review] merged\nPR #${pr.number}: ${pr.url} was merged by a human, so the issue is closed.\nNext: none.`);
+    } catch (e) {
+      say(`could not comment on issue #${candidate}: ${errorMessage(e)}`);
+    }
+    return { status: "merged", issue: candidate, pr: pr.number, prUrl: pr.url };
+  };
+
   // 1. Pick a card, and find its pull request.
   let number = opts.issue;
   if (number === undefined) {
-    const queued = (await gh.listIssuesByLabel(repo, "review")).map((i) => i.number).sort((a, b) => a - b);
+    let queued = (await gh.listIssuesByLabel(repo, "review")).map((i) => i.number).sort((a, b) => a - b);
+    let closedByMerge: Extract<ReviewResult, { status: "merged" }> | null = null;
+    const handled = new Set<number>();
+    for (const candidate of queued) {
+      const closed = await closeIfMerged(candidate);
+      if (closed !== null) {
+        closedByMerge = closed;
+        handled.add(candidate);
+      }
+    }
+    if (closedByMerge !== null) {
+      queued = queued.filter((n) => !handled.has(n));
+      if (queued.length === 0) return closedByMerge;
+    }
     if (queued.length === 0) {
       say("no open issue labelled review");
       emit("noop", "no open issue labelled review");
@@ -145,6 +192,10 @@ export async function runReviewLane(deps: ReviewDeps, opts: ReviewOptions): Prom
   const issue = await gh.getIssue(repo, number);
   if (!hasLabel(issue.labels, "review")) {
     throw new UsageError(`issue #${number} is not labelled review`, EXIT.precondition);
+  }
+  if (opts.issue !== undefined) {
+    const closed = await closeIfMerged(number);
+    if (closed !== null) return closed;
   }
   const branch = `issue-${number}`;
   const rendered = renderPrompt(opts.promptTemplate, project);
