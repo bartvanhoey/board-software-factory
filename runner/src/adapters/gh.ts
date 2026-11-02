@@ -10,6 +10,7 @@ const UserSchema = z.object({ login: z.string(), id: z.number() });
 const NamesSchema = z.array(z.object({ name: z.string() }));
 const NumbersSchema = z.array(z.object({ number: z.number() }));
 const PrsSchema = z.array(z.object({ number: z.number(), url: z.string(), isDraft: z.boolean() }));
+const MergedPrsSchema = z.array(z.object({ number: z.number(), url: z.string() }));
 const CommentsSchema = z.object({
   comments: z.array(z.object({ author: z.object({ login: z.string() }).nullable(), body: z.string() })),
 });
@@ -68,6 +69,15 @@ export const ghCli: Gh = {
   async findOpenPr(repo, branch) {
     const out = await gh(["pr", "list", "-R", repo, "--head", branch, "--state", "open", "--json", "number,url,isDraft"]);
     return PrsSchema.parse(JSON.parse(out))[0] ?? null;
+  },
+
+  async findMergedPr(repo, branch) {
+    const out = await gh(["pr", "list", "-R", repo, "--head", branch, "--state", "merged", "--json", "number,url"]);
+    return MergedPrsSchema.parse(JSON.parse(out))[0] ?? null;
+  },
+
+  async closeIssue(repo, number) {
+    await gh(["issue", "close", String(number), "-R", repo, "--reason", "completed"]);
   },
 
   async listIssueComments(repo, number) {

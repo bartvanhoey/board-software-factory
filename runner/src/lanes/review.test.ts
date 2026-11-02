@@ -794,3 +794,92 @@ describe("runReviewLane: requirements from an earlier review", () => {
     expect(prompt(u)).not.toContain("Requirements added by review");
   });
 });
+
+describe("runReviewLane: a PR merged by a human", () => {
+  const MERGED = { number: 13, url: "https://github.com/o/r/pull/13" };
+
+  const expectClosed = (t: T, issue: number) => {
+    expect(t.gh.closed).toEqual([issue]);
+    expect(t.gh.issues.get(issue)?.labels).toEqual([]);
+    expect(t.gh.comments).toHaveLength(1);
+    expect(t.gh.comments[0]?.body).toMatch(/^\[review\] merged\nPR #13: https:\/\/github.com\/o\/r\/pull\/13 /);
+    expect(t.events.types).toEqual(["merged"]);
+  };
+
+  it("closes the issue and removes the review label, even though the PR had no Closes keyword", async () => {
+    const t = setup();
+    t.gh.mergedPrs.set("issue-4", MERGED);
+    t.git.remoteBranches.delete("issue-4"); // the human deleted the branch on merge
+    const result = await t.run();
+    expect(result).toEqual({ status: "merged", issue: 4, pr: 13, prUrl: MERGED.url });
+    expectClosed(t, 4);
+    expect(t.agent.runs).toEqual([]);
+    expectNoPr(t);
+    expect(reviewExitCode(result)).toBe(0);
+  });
+
+  it("closes the issue when it is named with --issue, before the branch lookup", async () => {
+    const t = setup();
+    t.gh.mergedPrs.set("issue-4", MERGED);
+    t.git.remoteBranches.delete("issue-4");
+    expect((await t.run({ issue: 4 })).status).toBe("merged");
+    expectClosed(t, 4);
+  });
+
+  it("closes the merged card and still reviews the next card in the queue", async () => {
+    const t = setup();
+    t.gh.addIssue(5, ["review"], { title: "Other", body: "Other work" });
+    t.git.remoteBranches.add("issue-5");
+    t.git.refShas.set("origin/issue-5", [HEAD]);
+    t.gh.mergedPrs.set("issue-4", MERGED);
+    const result = await t.run();
+    expect(t.gh.closed).toEqual([4]);
+    expect(result.status === "back_to_qa" || result.status === "approved").toBe(true);
+    expect(result).toMatchObject({ issue: 5 });
+  });
+
+  it("leaves a card alone when no merged PR exists", async () => {
+    const t = setup();
+    await t.run();
+    expect(t.gh.closed).toEqual([]);
+  });
+
+  it("leaves the card alone when the merged-PR lookup fails", async () => {
+    const t = setup();
+    t.gh.failOnce.set("findMergedPr", new Error("api down"));
+    await t.run();
+    expect(t.gh.closed).toEqual([]);
+    expect(t.said.some((m) => m.includes("could not look for a merged PR of issue-4: api down"))).toBe(true);
+  });
+
+  it("does not remove the label or comment when closing the issue fails", async () => {
+    const t = setup();
+    t.gh.mergedPrs.set("issue-4", MERGED);
+    t.gh.failOnce.set("closeIssue", new Error("forbidden"));
+    await t.run();
+    expect(t.gh.closed).toEqual([]);
+    expect(t.events.types).not.toContain("merged");
+    expect(t.said.some((m) => m.includes("could not close issue #4: forbidden"))).toBe(true);
+  });
+
+  it("still reports merged when removing the label or commenting fails", async () => {
+    const t = setup();
+    t.gh.mergedPrs.set("issue-4", MERGED);
+    t.git.remoteBranches.delete("issue-4");
+    t.gh.failOnce.set("editIssue", new Error("label boom"));
+    expect((await t.run()).status).toBe("merged");
+    expect(t.gh.closed).toEqual([4]);
+    expect(t.said.some((m) => m.includes("removing the review label failed: label boom"))).toBe(true);
+  });
+
+  it("only prints the calls in a dry run", async () => {
+    const t = setup();
+    t.gh.mergedPrs.set("issue-4", MERGED);
+    t.git.remoteBranches.delete("issue-4");
+    const printed: string[] = [];
+    const result = await t.run({ dryRun: true, deps: { ...t.deps(), gh: dryRunGh(t.gh, (l) => printed.push(l)) } });
+    expect(result.status).toBe("merged");
+    expect(t.gh.closed).toEqual([]);
+    expect(printed.some((l) => l.startsWith("[dry-run] closeIssue"))).toBe(true);
+  });
+});

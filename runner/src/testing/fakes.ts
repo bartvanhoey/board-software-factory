@@ -9,6 +9,10 @@ export class FakeGh implements Gh {
   issues = new Map<number, IssueData>();
   /** Open pull requests by head branch. */
   openPrs = new Map<string, { number: number; url: string; isDraft?: boolean }>();
+  /** Merged pull requests by head branch. */
+  mergedPrs = new Map<string, { number: number; url: string }>();
+  /** Issues closed with `closeIssue`. */
+  closed: number[] = [];
   /** What `listIssueComments` returns: the issue's comment thread, oldest first. */
   issueThread: { author: string; body: string }[] = [];
   markedReady: number[] = [];
@@ -57,7 +61,7 @@ export class FakeGh implements Gh {
   }
   async listIssuesByLabel(_repo: string, label: string) {
     this.enter("listIssuesByLabel", label);
-    return [...this.issues.values()].filter((i) => i.labels.includes(label)).map((i) => ({ number: i.number }));
+    return [...this.issues.values()].filter((i) => i.labels.includes(label) && !this.closed.includes(i.number)).map((i) => ({ number: i.number }));
   }
   async getIssue(_repo: string, number: number) {
     this.enter("getIssue", String(number));
@@ -81,6 +85,15 @@ export class FakeGh implements Gh {
     this.enter("findOpenPr", branch);
     const pr = this.openPrs.get(branch);
     return pr ? { ...pr, isDraft: pr.isDraft ?? false } : null;
+  }
+  async findMergedPr(_repo: string, branch: string) {
+    this.enter("findMergedPr", branch);
+    const pr = this.mergedPrs.get(branch);
+    return pr ? { ...pr } : null;
+  }
+  async closeIssue(_repo: string, number: number) {
+    this.enter("closeIssue", String(number));
+    this.closed.push(number);
   }
   async listIssueComments(_repo: string, number: number) {
     this.enter("listIssueComments", String(number));

@@ -33,6 +33,10 @@ export interface Gh {
   listIssueComments(repo: string, number: number): Promise<{ author: string; body: string }[]>;
   /** The open pull request whose head is `branch`, or null. */
   findOpenPr(repo: string, branch: string): Promise<{ number: number; url: string; isDraft: boolean } | null>;
+  /** The merged pull request whose head is `branch`, or null. */
+  findMergedPr(repo: string, branch: string): Promise<{ number: number; url: string } | null>;
+  /** Closes an issue as completed. */
+  closeIssue(repo: string, number: number): Promise<void>;
   /** Marks a draft PR ready for review. Only needed for a PR that an older flow opened as a draft. */
   markPrReady(repo: string, number: number): Promise<void>;
   /** Squash-merges the PR only if its head is still `matchHeadCommit`. Rejects when GitHub refuses. */

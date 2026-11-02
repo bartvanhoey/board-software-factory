@@ -134,6 +134,8 @@ Rework cards are picked before `ready` cards, oldest first. The run:
 
 The last gate before a merge. **Nothing is merged unless you pass `--merge`.**
 
+0. **Merged by a human:** a `review` issue whose `issue-<n>` PR is already merged is closed and loses its `review`
+   label (comment `[review] merged`), even if the PR has no `Closes #<n>`. This runs first, so a deleted branch is fine.
 1. Picks the oldest `review` issue (or `--issue`) and checks that branch `issue-<n>` exists on `origin`
    (exit 65 if not).
 2. **QA gate:** the issue must carry a `[qa] pass at <sha>` comment for the branch's current head, written by
