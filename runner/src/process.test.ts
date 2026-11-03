@@ -10,19 +10,49 @@ describe("childEnv", () => {
   it("does not let a caller put it back by accident", () => {
     expect(childEnv(undefined, { RUNNER_API_TOKEN: "secret" })).toEqual({});
   });
+
+  it("drops the web service's secrets and anything else not on the allowlist", () => {
+    const env = childEnv(undefined, {
+      PATH: "/bin",
+      HOME: "/home/factory",
+      GH_TOKEN: "gh",
+      CLAUDE_CODE_OAUTH_TOKEN: "claude",
+      ANTHROPIC_API_KEY: "anthropic",
+      DOTNET_NOLOGO: "1",
+      MFA_ENCRYPTION_KEY: "web-secret",
+      SMTP_PASSWORD: "web-secret",
+      ADMIN_PASSWORD: "web-secret",
+      BOARD_GITHUB_TOKEN: "web-secret",
+      CREATE_ISSUE_GITHUB_TOKEN: "web-secret",
+      RUNNER_GITHUB_TOKEN: "runner-secret",
+      SOMETHING_ELSE: "x",
+    });
+    expect(env).toEqual({
+      PATH: "/bin",
+      HOME: "/home/factory",
+      GH_TOKEN: "gh",
+      CLAUDE_CODE_OAUTH_TOKEN: "claude",
+      ANTHROPIC_API_KEY: "anthropic",
+      DOTNET_NOLOGO: "1",
+    });
+  });
+
+  it("matches names case-insensitively (Path on Windows)", () => {
+    expect(childEnv(undefined, { Path: "C:\\bin", Secret: "x" })).toEqual({ Path: "C:\\bin" });
+  });
 });
 
 describe("what a lane starts", () => {
-  const key = "RUNNER_API_TOKEN";
-  const script = `process.stdout.write(String(process.env.${key} === undefined))`;
+  const keys = ["RUNNER_API_TOKEN", "MFA_ENCRYPTION_KEY", "SMTP_PASSWORD", "CREATE_ISSUE_GITHUB_TOKEN"];
+  const script = `process.stdout.write(String(${JSON.stringify(keys)}.every((k) => process.env[k] === undefined)))`;
 
-  it("does not see RUNNER_API_TOKEN, as a program or through the shell", async () => {
-    process.env[key] = "secret-value";
+  it("does not see the runner API token or the web secrets, as a program or through the shell", async () => {
+    for (const k of keys) process.env[k] = "secret-value";
     try {
       expect((await runProcess(process.execPath, ["-e", script])).stdout).toBe("true");
       expect((await runShellCommand(`"${process.execPath}" -e "${script.replace(/"/g, '\\"')}"`)).stdout).toBe("true");
     } finally {
-      delete process.env[key];
+      for (const k of keys) delete process.env[k];
     }
   });
 });

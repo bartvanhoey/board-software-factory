@@ -50,14 +50,33 @@ function collect(child: ReturnType<typeof spawn>, label: string, opts: ProcessOp
   });
 }
 
+/** Variables a child may inherit (names are compared case-insensitively, as Windows does). */
+const INHERITED_NAMES = new Set([
+  // process basics
+  "PATH", "PATHEXT", "HOME", "USER", "LOGNAME", "SHELL", "TERM", "LANG", "TZ", "CI", "TMPDIR", "TMP", "TEMP",
+  "USERPROFILE", "APPDATA", "LOCALAPPDATA", "SYSTEMROOT", "WINDIR", "COMSPEC", "PROGRAMFILES", "PROGRAMDATA",
+  // credentials the lanes need: gh and git push (GH_TOKEN), and the agent
+  "GH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY",
+  // tool behaviour set by the image
+  "DISABLE_AUTOUPDATER", "NEXT_TELEMETRY_DISABLED",
+  // network settings a deployment behind a proxy needs
+  "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "SSL_CERT_FILE", "SSL_CERT_DIR",
+]);
+const INHERITED_PREFIXES = ["LC_", "DOTNET_", "NUGET_", "NODE_", "NPM_", "GIT_", "GH_", "CLAUDE_CODE_", "ANTHROPIC_"];
+
 /**
- * The environment for everything a lane starts (git, gh, the agent, the project's own commands). RUNNER_API_TOKEN only
- * lets the runner fetch the project list, so none of them gets it: the agent follows instructions found in issues, and the
- * project commands are code from the repository.
+ * The environment for everything a lane starts (git, gh, the agent, the project's own commands). It is an allowlist:
+ * the agent follows instructions found in issues and the project commands are code from the repository, so they get
+ * only what they need to run. Anything else in the runner's environment (RUNNER_API_TOKEN, and any secret that ends up
+ * there by mistake) is not passed on. `extra` is added as given.
  */
 export function childEnv(extra: NodeJS.ProcessEnv | undefined, base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  const { RUNNER_API_TOKEN: _token, ...rest } = base;
-  return { ...rest, ...extra };
+  const env: NodeJS.ProcessEnv = {};
+  for (const [name, value] of Object.entries(base)) {
+    const key = name.toUpperCase();
+    if (INHERITED_NAMES.has(key) || INHERITED_PREFIXES.some((p) => key.startsWith(p))) env[name] = value;
+  }
+  return { ...env, ...extra };
 }
 
 /** Run a program with an argument array: no shell, so no quoting problems and no injection. */

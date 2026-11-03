@@ -30,14 +30,21 @@ services:
       web:
         condition: service_healthy
 
-    # Secrets come from .env (gitignored), never from the image.
-    env_file: .env
+    # Secrets come from .env (gitignored), never from the image. Listed one by one, not via env_file: the runner must not
+    # see the web service's secrets (MFA key, SMTP password, issue-creation token), because the agent and the project's
+    # own commands run with this environment.
     environment:
       FACTORY_WORKSPACE: /workspace
       FACTORY_DATA: /data
       # Package cache on a volume, not in the 512 MB RAM-backed HOME (a NuGet restore needs about 400 MB).
       NUGET_PACKAGES: /cache/nuget
-      # The projects live in the web service (ADR 0001); RUNNER_API_TOKEN comes from .env above.
+      # The projects live in the web service (ADR 0001).
+      RUNNER_API_TOKEN: ${RUNNER_API_TOKEN:-}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-}
+      SCHEDULER_INTERVAL_MINUTES: ${SCHEDULER_INTERVAL_MINUTES:-}
+      SCHEDULER_RUN_TIMEOUT_MINUTES: ${SCHEDULER_RUN_TIMEOUT_MINUTES:-}
       FACTORY_WEB_URL: http://web:2999
       # The gh CLI only reads GH_TOKEN, so the runner's token is handed to it under that name.
       GH_TOKEN: ${RUNNER_GITHUB_TOKEN:-}
