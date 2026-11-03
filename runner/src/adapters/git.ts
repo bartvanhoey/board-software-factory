@@ -14,8 +14,23 @@ const MERGE_IDENTITY = {
   GIT_COMMITTER_EMAIL: "factory-runner@localhost",
 };
 
+/**
+ * Every git call runs on a clone or worktree the builder agent could write to, so none of them may run a program that
+ * the repository's own config or hooks name. Command-line `-c` outranks any config file, so a planted
+ * `core.fsmonitor` or `core.hooksPath` has no effect; `GIT_CONFIG_NOSYSTEM` leaves out the system gitconfig.
+ * The result: no git hook runs on the runner's own commits either.
+ */
+const PIN = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"];
+const PINNED_ENV = { GIT_TERMINAL_PROMPT: "0", GIT_CONFIG_NOSYSTEM: "1" };
+
+const argv = (cwd: string, args: readonly string[], network: boolean): string[] => ["-C", cwd, ...PIN, ...(network ? AUTH : []), ...args];
+
+/** Run git without throwing on a non-zero exit. */
+const gitRun = (cwd: string, args: readonly string[], opts: { network?: boolean; env?: NodeJS.ProcessEnv } = {}) =>
+  runProcess("git", argv(cwd, args, opts.network ?? false), { env: { ...PINNED_ENV, ...opts.env } });
+
 const git = (cwd: string, args: string[], network = false): Promise<string> =>
-  mustRun("git", ["-C", cwd, ...(network ? AUTH : []), ...args], { env: { GIT_TERMINAL_PROMPT: "0" } });
+  mustRun("git", argv(cwd, args, network), { env: PINNED_ENV });
 
 /** The real git adapter. */
 export const gitCli: Git = {
@@ -42,12 +57,12 @@ export const gitCli: Git = {
   async merge(cwd, sha) {
     // `--no-commit` creates no commit, but git still refuses to start a merge without an identity,
     // and the container has none. This one that never lands in history satisfies it.
-    const r = await runProcess("git", ["-C", cwd, "merge", "--no-commit", "--no-ff", sha], { env: { ...MERGE_IDENTITY, GIT_TERMINAL_PROMPT: "0" } });
+    const r = await gitRun(cwd, ["merge", "--no-commit", "--no-ff", sha], { env: MERGE_IDENTITY });
     if (r.code === 0) return true;
     // Exit 1 also means "not something we can merge" (a bad commit). Only a real conflict leaves a
     // merge in progress, which shows as MERGE_HEAD.
     if (r.code === 1) {
-      const inProgress = await runProcess("git", ["-C", cwd, "rev-parse", "-q", "--verify", "MERGE_HEAD"]);
+      const inProgress = await gitRun(cwd, ["rev-parse", "-q", "--verify", "MERGE_HEAD"]);
       if (inProgress.code === 0) return false;
     }
     const detail = (r.stderr || r.stdout).trim().split("\n").slice(-2).join(" | ");
@@ -59,19 +74,17 @@ export const gitCli: Git = {
   },
 
   async worktreeRemove(cwd, path) {
-    await runProcess("git", ["-C", cwd, "worktree", "remove", "--force", path]);
-    await runProcess("git", ["-C", cwd, "worktree", "prune"]);
+    await gitRun(cwd, ["worktree", "remove", "--force", path]);
+    await gitRun(cwd, ["worktree", "prune"]);
   },
 
   async branchExists(cwd, branch) {
-    const r = await runProcess("git", ["-C", cwd, "rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]);
+    const r = await gitRun(cwd, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]);
     return r.code === 0;
   },
 
   async remoteBranchExists(cwd, branch) {
-    const r = await runProcess("git", ["-C", cwd, ...AUTH, "ls-remote", "--exit-code", "--heads", "origin", branch], {
-      env: { GIT_TERMINAL_PROMPT: "0" },
-    });
+    const r = await gitRun(cwd, ["ls-remote", "--exit-code", "--heads", "origin", branch], { network: true });
     if (r.code === 0) return true;
     if (r.code === 2) return false; // no matching ref
     throw new Error(`git ls-remote failed (exit ${r.code}): ${r.stderr.trim()}`);
@@ -104,14 +117,14 @@ export const gitCli: Git = {
 
   async commitAll(cwd, message, identity) {
     const env = {
-      GIT_TERMINAL_PROMPT: "0",
+      ...PINNED_ENV,
       GIT_AUTHOR_NAME: identity.name,
       GIT_AUTHOR_EMAIL: identity.email,
       GIT_COMMITTER_NAME: identity.name,
       GIT_COMMITTER_EMAIL: identity.email,
     };
-    await mustRun("git", ["-C", cwd, "add", "-A"], { env });
-    await mustRun("git", ["-C", cwd, "commit", "-q", "-m", message], { env });
+    await mustRun("git", argv(cwd, ["add", "-A"], false), { env });
+    await mustRun("git", argv(cwd, ["commit", "-q", "-m", message], false), { env });
   },
 
   async push(cwd, branch) {

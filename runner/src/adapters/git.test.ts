@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -176,5 +176,38 @@ describe("gitCli.push", () => {
     commitFile("c.txt", "more\n", "more work");
     await gitCli.push(repo, "feature");
     expect(execFileSync("git", ["-C", bare, "rev-parse", "feature"], { encoding: "utf8" }).trim()).toBe(git("rev-parse", "feature").trim());
+  });
+});
+
+describe("config the repository names must not run", () => {
+  // The builder agent can write into its worktree and the clone behind it. Git would run whatever
+  // core.fsmonitor or a hook names, as the runner, so the adapter pins them off for every call.
+  const sh = (path: string) => path.split("\\").join("/");
+
+  it("runs no fsmonitor command, hook or hooksPath hook when it checks status and commits", async () => {
+    const marker = (name: string) => sh(join(root, name));
+    const script = (path: string, name: string) => {
+      writeFileSync(path, `#!/bin/sh\necho ran > "${marker(name)}"\n`);
+      chmodSync(path, 0o755);
+    };
+
+    // 1. a hook in the repository's own hooks directory
+    script(join(repo, ".git", "hooks", "pre-commit"), "hook-ran");
+    // 2. a hook in a directory that core.hooksPath in the repo config points to
+    const hooksDir = join(root, "planted-hooks");
+    mkdirSync(hooksDir);
+    script(join(hooksDir, "pre-commit"), "hookspath-ran");
+    git("config", "core.hooksPath", sh(hooksDir));
+    // 3. an fsmonitor command in the repo config
+    git("config", "core.fsmonitor", `echo ran > "${marker("fsmonitor-ran")}"`);
+
+    writeFileSync(join(repo, "c.txt"), "change\n");
+    expect(await gitCli.isClean(repo)).toBe(false);
+    await gitCli.commitAll(repo, "runner commit", { name: "factory", email: "factory@localhost" });
+    expect(await gitCli.isClean(repo)).toBe(true);
+
+    for (const name of ["hook-ran", "hookspath-ran", "fsmonitor-ran"]) {
+      expect(existsSync(join(root, name)), name).toBe(false);
+    }
   });
 });
