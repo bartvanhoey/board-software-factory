@@ -20,7 +20,7 @@ Both run the same image.
 
 | Service | Command | Notes |
 | --- | --- | --- |
-| `runner` | `runner schedule` (idle unless `SCHEDULER_ENABLED=true`) | gets `.env` (`RUNNER_GITHUB_TOKEN`, `ANTHROPIC_API_KEY`, `RUNNER_API_TOKEN`) and fetches the projects from `web`; run lanes with `docker compose exec runner npm run runner -- ...`, see `runner/README.md` |
+| `runner` | `runner schedule` (idle unless `SCHEDULER_ENABLED=true`) | gets only the variables it needs from `.env` (`RUNNER_GITHUB_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`, `RUNNER_API_TOKEN`, `SCHEDULER_*`) and fetches the projects from `web`; run lanes with `docker compose exec runner npm run runner -- ...`, see `runner/README.md` |
 | `web` | `next start` on port 2999 | dashboard at http://localhost:2999, bound to `127.0.0.1` only |
 
 The dashboard has a login, but it is served over plain http, so the port is published on localhost only. To expose it
@@ -29,6 +29,10 @@ beyond localhost, put a TLS proxy in front first (then set `COOKIE_SECURE=true`)
 `web` never receives the runner's `RUNNER_GITHUB_TOKEN` (which can write branches and pull requests) or
 `ANTHROPIC_API_KEY`. It reads `BOARD_GITHUB_TOKEN` from `.env`, which must be read-only, and the optional,
 separate `CREATE_ISSUE_GITHUB_TOKEN` with Issues: read/write access for creating issues. Leave the board token empty to see demo data.
+The reverse holds too: `runner` receives only the variables listed under its `environment:` in compose, not the whole `.env`, and
+the processes it starts (the agent, git, `gh`, your project's build and test commands) get a smaller allowlist of those
+(`childEnv` in `runner/src/process.ts`). A variable the runner needs that is not on either list (for example a proxy setting)
+has to be added to both.
 Its code is baked into the image, so rebuild after changes: `docker compose up -d --build`.
 
 ## Dashboard login settings
