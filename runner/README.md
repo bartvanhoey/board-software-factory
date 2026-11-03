@@ -77,7 +77,7 @@ leaves its card in `building` with no result: move it back to `ready` by hand.
 5. Checks the result itself: at least one commit, a clean tree, then the project's `commands.test`
    (or `commands.build` when there are no tests, or nothing when there are neither).
    If the builder made **no commit** but left changes, the lane commits them itself as the bot
-   (`🤖 [build] #<n>: <issue title>`, `git add -A`, hooks run) and still verifies. It refuses, and
+   (`🤖 [build] #<n>: <issue title>`, `git add -A`; git hooks are switched off for the runner's own git calls) and still verifies. It refuses, and
    commits nothing, when a changed file looks like a secret (`.env*` except `.env.example`, `*.pem`,
    `*.key`, `*.pfx`, `*.p12`, `id_rsa*`). Leftover changes next to a commit the builder made stay a failure.
    The issue comment says when the lane made the commit.
