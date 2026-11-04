@@ -4,7 +4,7 @@ import { EXIT, UsageError, errorMessage } from "../errors.js";
 import { laneContext, laneSections } from "../feedback.js";
 import { compareUrl } from "../links.js";
 import type { AgentRunner, Gh, Git, LabelEnsurer, Shell, EventLog } from "../ports.js";
-import { qaToolsFor, renderPrompt } from "../prompt.js";
+import { DENIED_TOOLS, qaToolsFor, renderPrompt } from "../prompt.js";
 import { parseVerdict } from "../verdict.js";
 
 export interface QaDeps {
@@ -186,6 +186,7 @@ export async function runQaLane(deps: QaDeps, opts: QaOptions): Promise<QaResult
         prompt,
         maxTurns: project.limits.qaMaxTurns,
         allowedTools: qaToolsFor(project),
+        disallowedTools: DENIED_TOOLS,
         logFile,
         env: {},
       });

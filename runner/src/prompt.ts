@@ -37,6 +37,17 @@ const STACK_TOOLS: Record<Project["stack"], string[]> = {
   other: [],
 };
 
+/**
+ * Tools every agent is denied, even where an allow rule above would match. A prefix allow rule such as `Bash(git diff:*)`
+ * also matches `git diff --output=<file>`, which writes a file from a lane that is meant to be read-only, and
+ * `--ext-diff` / `--textconv`, which run a program that a repository's git config or attributes name. Deny rules win over
+ * allow rules and apply however the flag is placed in the command. git rejects abbreviated long options, so the full
+ * spellings are all that is needed.
+ */
+export const DENIED_TOOLS = ["--output", "--ext-diff", "--textconv"].flatMap((flag) =>
+  ["git diff", "git log"].map((cmd) => `Bash(${cmd}*${flag}*)`),
+);
+
 /** Tools the builder agent may use: file tools, read-only-ish git, and the stack's own toolchain. */
 export function allowedToolsFor(project: Project): string[] {
   return [...BASE_TOOLS, ...STACK_TOOLS[project.stack]];

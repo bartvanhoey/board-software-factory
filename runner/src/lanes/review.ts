@@ -4,7 +4,7 @@ import { EXIT, UsageError, errorMessage } from "../errors.js";
 import { laneContext, laneSections } from "../feedback.js";
 import { compareUrl } from "../links.js";
 import type { AgentRunner, EventLog, Gh, Git, LabelEnsurer, Shell } from "../ports.js";
-import { qaToolsFor, renderPrompt } from "../prompt.js";
+import { DENIED_TOOLS, qaToolsFor, renderPrompt } from "../prompt.js";
 import { latestQaResult } from "../qaGate.js";
 import { parseVerdict } from "../verdict.js";
 
@@ -317,6 +317,7 @@ export async function runReviewLane(deps: ReviewDeps, opts: ReviewOptions): Prom
         prompt,
         maxTurns: project.limits.reviewMaxTurns,
         allowedTools: qaToolsFor(project),
+        disallowedTools: DENIED_TOOLS,
         logFile,
         env: {},
       });

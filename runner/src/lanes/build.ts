@@ -3,7 +3,7 @@ import type { Project } from "@factory/shared";
 import { UsageError, EXIT, errorMessage } from "../errors.js";
 import { fenceFor, firstReason, reworkState, type Feedback } from "../feedback.js";
 import { compareUrl } from "../links.js";
-import { allowedToolsFor, renderPrompt, verifyStep } from "../prompt.js";
+import { allowedToolsFor, DENIED_TOOLS, renderPrompt, verifyStep } from "../prompt.js";
 import { isSecretPath } from "../secrets.js";
 import type { AgentRunner, EventLog, Gh, Git, LabelEnsurer, Shell } from "../ports.js";
 
@@ -254,6 +254,7 @@ export async function runBuildLane(deps: BuildDeps, opts: BuildOptions): Promise
           prompt,
           maxTurns: project.limits.maxTurns,
           allowedTools: allowedToolsFor(project),
+          disallowedTools: DENIED_TOOLS,
           logFile,
           env: {
             GIT_AUTHOR_NAME: identity.name,

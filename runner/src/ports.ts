@@ -75,6 +75,8 @@ export interface AgentRun {
   prompt: string;
   maxTurns: number;
   allowedTools: string[];
+  /** Deny rules; they win over `allowedTools`. */
+  disallowedTools: string[];
   logFile: string;
   /** Extra environment, for example the git author identity. */
   env: Record<string, string>;

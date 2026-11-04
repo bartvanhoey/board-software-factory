@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { dryRunGh, dryRunGit } from "../dryRun.js";
 import { UsageError } from "../errors.js";
 import { createLabelEnsurer } from "../labels.js";
+import { DENIED_TOOLS } from "../prompt.js";
 import { FakeAgent, FakeEvents, FakeGh, FakeGit, FakeShell, type CallLog } from "../testing/fakes.js";
 import { qaExitCode, runQaLane, type QaDeps, type QaResult } from "./qa.js";
 
@@ -125,6 +126,42 @@ describe("runQaLane: pass", () => {
     expect(run?.allowedTools).toEqual(expect.arrayContaining(["Read", "Glob", "Grep", "Bash(git diff:*)", "Bash(dotnet:*)"]));
     for (const write of ["Edit", "Write", "Bash(git add:*)", "Bash(git commit:*)", "Bash"]) {
       expect(run?.allowedTools, write).not.toContain(write);
+    }
+  });
+
+  it("denies the git options that write a file or run a program, however they are placed in the command", async () => {
+    const t = setup();
+    await t.run();
+    const denied = t.agent.runs[0]?.disallowedTools ?? [];
+    expect(denied).toEqual(DENIED_TOOLS);
+
+    // A deny rule is a glob over the command text: `*` stands for any characters (here a plain left-to-right match).
+    const matches = (command: string) =>
+      denied.some((rule) => {
+        const parts = (/^Bash\((.*)\)$/.exec(rule)?.[1] ?? "").split("*");
+        if (!command.startsWith(parts[0] ?? "")) return false;
+        let at = (parts[0] ?? "").length;
+        for (const part of parts.slice(1, -1)) {
+          const found = command.indexOf(part, at);
+          if (found < 0) return false;
+          at = found + part.length;
+        }
+        const last = parts[parts.length - 1] ?? "";
+        return parts.length === 1 ? command === parts[0] : command.length - last.length >= at && command.endsWith(last);
+      });
+    for (const command of [
+      "git diff --output=out.txt",
+      "git diff HEAD~1 --output out.txt",
+      "git log -p --output=out.txt",
+      "git log --ext-diff -p",
+      "git diff --ext-diff main",
+      "git diff --textconv",
+      "git log -p main --textconv",
+    ]) {
+      expect(matches(command), command).toBe(true);
+    }
+    for (const command of ["git diff main", "git diff --stat HEAD~1", "git log --oneline -5", "git diff --no-ext-diff", "git log -p --no-textconv"]) {
+      expect(matches(command), command).toBe(false);
     }
   });
 
