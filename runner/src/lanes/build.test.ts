@@ -105,6 +105,7 @@ describe("runBuildLane: happy path", () => {
     expect(run?.maxTurns).toBe(20);
     expect(run?.allowedTools).toContain("Bash(dotnet:*)");
     expect(run?.allowedTools).not.toContain("Bash(npm:*)");
+    expect(run?.disallowedTools).toContain("Bash(git diff*--output*)");
     expect(run?.logFile).toBe(join("logs", "issue-4.log"));
     expect(run?.env).toMatchObject({
       GIT_AUTHOR_NAME: "factory-bot",

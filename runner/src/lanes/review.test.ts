@@ -336,6 +336,7 @@ describe("runReviewLane: approved, without --merge", () => {
     expect(run?.prompt).toContain("## Issue #4: Purple buttons");
     expect(run?.prompt).toContain("Make the delete buttons purple.");
     expect(run?.allowedTools).toEqual(expect.arrayContaining(["Read", "Glob", "Grep", "Bash(git diff:*)", "Bash(dotnet:*)"]));
+    expect(run?.disallowedTools).toContain("Bash(git log*--output*)");
     for (const write of ["Edit", "Write", "Bash(git add:*)", "Bash(git commit:*)", "Bash"]) {
       expect(run?.allowedTools, write).not.toContain(write);
     }

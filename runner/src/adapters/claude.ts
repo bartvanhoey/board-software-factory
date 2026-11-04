@@ -3,10 +3,10 @@ import { runProcess, runShellCommand } from "../process.js";
 
 /** The coding agent: `claude -p`, prompt on stdin, authenticated through ANTHROPIC_API_KEY. */
 export const claudeAgent: AgentRunner = {
-  async run({ cwd, prompt, maxTurns, allowedTools, logFile, env }) {
+  async run({ cwd, prompt, maxTurns, allowedTools, disallowedTools, logFile, env }) {
     const result = await runProcess(
       "claude",
-      ["-p", "--max-turns", String(maxTurns), "--allowedTools", ...allowedTools],
+      ["-p", "--max-turns", String(maxTurns), "--allowedTools", ...allowedTools, "--disallowedTools", ...disallowedTools],
       { cwd, input: prompt, logFile, env },
     );
     if (result.code !== 0) throw new Error(`claude exited with code ${result.code}`);
