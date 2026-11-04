@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — 2026-11-04 (since v1.2.1)
+
+### 🔒 Security
+- `1095bbe` fix: keep GH_TOKEN away from the builder agent and the project commands
+- `ecb4e83` fix: only a project manager or administrator can mark a new issue ready
+
+---
+2 commits (2 pull requests) · 13 files changed · 04 Nov 2026
+
 ## v1.2.1 — 2026-11-04
 
 ### 🔒 Security
