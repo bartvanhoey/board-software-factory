@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { audit } from "./audit";
 import { transaction } from "./db";
-import { hashPassword, needsRehash, verifyDummy, verifyPassword } from "./password";
+import { HashQueueFull, hashPassword, hashQueueFull, needsRehash, verifyDummy, verifyPassword } from "./password";
 import { checkPassword } from "./policy";
 import { createSession, deleteSession, purgeExpired, revokeSessions, validateSession } from "./sessions";
 import { consume, recordFailure, releaseFailure, resetFailures, retryAfter } from "./throttle";
@@ -25,6 +25,8 @@ const REGISTER_GLOBAL = 20;
 const PENDING_CAP = 100;
 const GENERIC_LOGIN_ERROR = "Wrong email or password.";
 const EXISTS = "An account with this email already exists.";
+
+const BUSY = "The server is busy. Try again in a moment.";
 
 function wait(ms: number): string {
   const minutes = Math.ceil(ms / 60_000);
@@ -85,6 +87,9 @@ export async function login(db: DatabaseSync, input: { email: string; password: 
 
   const blocked = Math.max(...keys.map((k) => retryAfter(db, k, now)));
   if (blocked > 0) return { ok: false, error: wait(blocked) };
+  // Too many hashes already waiting (a flood of logins for different emails): refuse before this attempt is counted,
+  // so the flood cannot also lock real accounts. The answer does not depend on the email.
+  if (hashQueueFull()) return { ok: false, error: BUSY };
   // Count this attempt now, before the slow hash, so a burst of concurrent guesses cannot all pass the
   // check above while the count is still zero. It is taken back on success.
   for (const k of keys) recordFailure(db, k, now);
@@ -94,7 +99,14 @@ export async function login(db: DatabaseSync, input: { email: string; password: 
 
   // Rehashing is slow too, so do it before the last read: from there to the new session there must be no await,
   // or MFA could be switched on in between and the session would be created without the second factor.
-  const rehash = user && valid && needsRehash(user.password_hash) ? await hashPassword(input.password) : null;
+  // A full queue only skips the rehash: the password was right, and the next login tries again.
+  const rehash =
+    user && valid && needsRehash(user.password_hash)
+      ? await hashPassword(input.password).catch((e: unknown) => {
+          if (e instanceof HashQueueFull) return null;
+          throw e;
+        })
+      : null;
 
   // The hashes above are slow. Re-read the row so a password reset, a disable or a newly enabled MFA that landed
   // meanwhile still wins. The re-read and the new session are ONE transaction: another process (the break-glass

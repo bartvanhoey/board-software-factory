@@ -14,11 +14,26 @@ const KEY_LENGTH = 32;
 const MAX_N = 2 ** 18; // a stored hash can never make us allocate more than this (r and p are bounded below)
 
 // Each hash takes ~64 MiB and the web container has 1 GiB, so cap how many run at once.
-const MAX_CONCURRENT = 2;
+export const MAX_CONCURRENT = 2;
+/** At most this many hashes wait behind the running ones; more are refused. About 1-2 seconds of backlog. */
+export const MAX_WAITING = 16;
 let running = 0;
 const waiting: (() => void)[] = [];
 
+/** Thrown instead of queueing another hash when MAX_WAITING are already waiting. */
+export class HashQueueFull extends Error {
+  constructor() {
+    super("password hashing queue is full");
+  }
+}
+
+/** True when the next hash would be refused. Check it before doing anything that must not happen for a refused attempt. */
+export function hashQueueFull(): boolean {
+  return waiting.length >= MAX_WAITING;
+}
+
 async function slot<T>(work: () => Promise<T>): Promise<T> {
+  if (hashQueueFull()) throw new HashQueueFull();
   while (running >= MAX_CONCURRENT) await new Promise<void>((resolve) => waiting.push(resolve));
   running++;
   try {
