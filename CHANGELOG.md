@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — 2026-11-04 (since v1.2.0)
+## v1.2.1 — 2026-11-04
 
 ### 🔒 Security
 - `0218449` fix: bound the scrypt queue so a login flood cannot grow it without limit
