@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased — 2026-11-04 (since v1.2.0)
+
+### 🔒 Security
+- `0218449` fix: bound the scrypt queue so a login flood cannot grow it without limit
+- `f22af03` fix: deny git diff/log --output, --ext-diff and --textconv for the agents
+- `7cb3679` fix: pin the runner's git calls against repo-planted hooks and fsmonitor
+- `68a16b0` fix: give the runner an explicit environment and make childEnv an allowlist
+
+### 🐛 Bug fixes
+- `e39491c` fix: close the issue when a human merges its issue-<n> PR
+- `f623103` fix: push the latest tag to Docker Hub on release
+
+### 📝 Documentation
+- `5b4105e` docs: replace the stale placeholder comment in docker/entrypoint.sh
+
+---
+7 commits (7 pull requests) · 26 files changed · 01 Nov – 04 Nov 2026
+
 ## v1.0.0 — 2026-11-01
 
 ### ✨ Features
