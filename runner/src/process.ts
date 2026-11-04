@@ -16,6 +16,12 @@ export interface ProcessOptions {
   /** Output is appended here as well as returned. */
   logFile?: string;
   timeoutMs?: number;
+  /**
+   * Pass the runner's GitHub token (GH_TOKEN) on. Off by default: only the runner's own `gh` calls and git's network
+   * commands need it. The agent and the project's build and test commands never do, and they run text and code from
+   * issues and repositories.
+   */
+  githubToken?: boolean;
 }
 
 function appendLog(file: string | undefined, text: string): void {
@@ -55,26 +61,34 @@ const INHERITED_NAMES = new Set([
   // process basics
   "PATH", "PATHEXT", "HOME", "USER", "LOGNAME", "SHELL", "TERM", "LANG", "TZ", "CI", "TMPDIR", "TMP", "TEMP",
   "USERPROFILE", "APPDATA", "LOCALAPPDATA", "SYSTEMROOT", "WINDIR", "COMSPEC", "PROGRAMFILES", "PROGRAMDATA",
-  // credentials the lanes need: gh and git push (GH_TOKEN), and the agent
-  "GH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY",
+  // credential for the agent (the GitHub token is separate, see GITHUB_TOKEN_NAME)
+  "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY",
   // tool behaviour set by the image
   "DISABLE_AUTOUPDATER", "NEXT_TELEMETRY_DISABLED",
   // network settings a deployment behind a proxy needs
   "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "SSL_CERT_FILE", "SSL_CERT_DIR",
 ]);
 const INHERITED_PREFIXES = ["LC_", "DOTNET_", "NUGET_", "NODE_", "NPM_", "GIT_", "GH_", "CLAUDE_CODE_", "ANTHROPIC_"];
+/** GH_TOKEN, GH_ENTERPRISE_TOKEN: only passed on when the caller asks for the GitHub token. */
+const GITHUB_TOKEN_NAME = /^GH_.*TOKEN$/;
 
 /**
  * The environment for everything a lane starts (git, gh, the agent, the project's own commands). It is an allowlist:
  * the agent follows instructions found in issues and the project commands are code from the repository, so they get
  * only what they need to run. Anything else in the runner's environment (RUNNER_API_TOKEN, and any secret that ends up
- * there by mistake) is not passed on. `extra` is added as given.
+ * there by mistake) is not passed on. The GitHub token is passed only with `githubToken`. `extra` is added as given.
  */
-export function childEnv(extra: NodeJS.ProcessEnv | undefined, base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+export function childEnv(
+  extra: NodeJS.ProcessEnv | undefined,
+  base: NodeJS.ProcessEnv = process.env,
+  { githubToken = false }: { githubToken?: boolean } = {},
+): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const [name, value] of Object.entries(base)) {
     const key = name.toUpperCase();
-    if (INHERITED_NAMES.has(key) || INHERITED_PREFIXES.some((p) => key.startsWith(p))) env[name] = value;
+    if (GITHUB_TOKEN_NAME.test(key)) {
+      if (githubToken) env[name] = value;
+    } else if (INHERITED_NAMES.has(key) || INHERITED_PREFIXES.some((p) => key.startsWith(p))) env[name] = value;
   }
   return { ...env, ...extra };
 }
@@ -83,7 +97,7 @@ export function childEnv(extra: NodeJS.ProcessEnv | undefined, base: NodeJS.Proc
 export function runProcess(file: string, args: readonly string[], opts: ProcessOptions = {}): Promise<ProcessResult> {
   const child = spawn(file, [...args], {
     cwd: opts.cwd,
-    env: childEnv(opts.env),
+    env: childEnv(opts.env, process.env, opts),
     stdio: ["pipe", "pipe", "pipe"],
     shell: false,
   });
@@ -94,7 +108,7 @@ export function runProcess(file: string, args: readonly string[], opts: ProcessO
 export function runShellCommand(command: string, opts: ProcessOptions = {}): Promise<ProcessResult> {
   const child = spawn(command, {
     cwd: opts.cwd,
-    env: childEnv(opts.env),
+    env: childEnv(opts.env, process.env, opts),
     stdio: ["pipe", "pipe", "pipe"],
     shell: true,
   });

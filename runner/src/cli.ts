@@ -93,7 +93,7 @@ function writeText(file: string, text: string): void {
 async function requireTools(tools: string[]): Promise<void> {
   const missing = missingTools(tools);
   if (missing.length > 0) throw new UsageError(`missing tool: ${missing.join(", ")}`, EXIT.missingTool);
-  const auth = await runProcess("gh", ["auth", "status"], { env: { GH_PROMPT_DISABLED: "1" } });
+  const auth = await runProcess("gh", ["auth", "status"], { env: { GH_PROMPT_DISABLED: "1" }, githubToken: true });
   if (auth.code !== 0) throw new UsageError("gh is not logged in (set GH_TOKEN; under docker compose it comes from RUNNER_GITHUB_TOKEN in .env)", EXIT.missingTool);
 }
 

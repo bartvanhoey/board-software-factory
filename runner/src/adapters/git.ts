@@ -3,7 +3,8 @@ import { mustRun, runProcess } from "../process.js";
 
 /**
  * Network commands authenticate through `gh` (GH_TOKEN) for this one command only.
- * Nothing is written to git config, which matters because HOME is wiped on restart.
+ * Nothing is written to git config, which matters because HOME is wiped on restart. Only these network commands get
+ * GH_TOKEN; the local ones (status, add, commit, merge, ...) do not.
  */
 const AUTH = ["-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential"];
 
@@ -27,10 +28,10 @@ const argv = (cwd: string, args: readonly string[], network: boolean): string[] 
 
 /** Run git without throwing on a non-zero exit. */
 const gitRun = (cwd: string, args: readonly string[], opts: { network?: boolean; env?: NodeJS.ProcessEnv } = {}) =>
-  runProcess("git", argv(cwd, args, opts.network ?? false), { env: { ...PINNED_ENV, ...opts.env } });
+  runProcess("git", argv(cwd, args, opts.network ?? false), { env: { ...PINNED_ENV, ...opts.env }, githubToken: opts.network ?? false });
 
 const git = (cwd: string, args: string[], network = false): Promise<string> =>
-  mustRun("git", argv(cwd, args, network), { env: PINNED_ENV });
+  mustRun("git", argv(cwd, args, network), { env: PINNED_ENV, githubToken: network });
 
 /** The real git adapter. */
 export const gitCli: Git = {
