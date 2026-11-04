@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — 2026-11-04 (since v1.2.1)
+## v1.3.0 — 2026-11-04
 
 ### 🔒 Security
 - `1095bbe` fix: keep GH_TOKEN away from the builder agent and the project commands
