@@ -3,8 +3,14 @@ import { childEnv, runProcess, runShellCommand } from "./process.js";
 
 describe("childEnv", () => {
   it("drops RUNNER_API_TOKEN and keeps the rest", () => {
-    const env = childEnv({ EXTRA: "1" }, { PATH: "/bin", GH_TOKEN: "gh", RUNNER_API_TOKEN: "secret" });
-    expect(env).toEqual({ PATH: "/bin", GH_TOKEN: "gh", EXTRA: "1" });
+    const env = childEnv({ EXTRA: "1" }, { PATH: "/bin", ANTHROPIC_API_KEY: "key", RUNNER_API_TOKEN: "secret" });
+    expect(env).toEqual({ PATH: "/bin", ANTHROPIC_API_KEY: "key", EXTRA: "1" });
+  });
+
+  it("keeps the GitHub token out unless the caller asks for it", () => {
+    const base = { PATH: "/bin", GH_TOKEN: "gh", GH_ENTERPRISE_TOKEN: "ghe", GH_PROMPT_DISABLED: "1" };
+    expect(childEnv(undefined, base)).toEqual({ PATH: "/bin", GH_PROMPT_DISABLED: "1" });
+    expect(childEnv(undefined, base, { githubToken: true })).toEqual(base);
   });
 
   it("does not let a caller put it back by accident", () => {
@@ -16,6 +22,7 @@ describe("childEnv", () => {
       PATH: "/bin",
       HOME: "/home/factory",
       GH_TOKEN: "gh",
+      GH_ENTERPRISE_TOKEN: "ghe",
       CLAUDE_CODE_OAUTH_TOKEN: "claude",
       ANTHROPIC_API_KEY: "anthropic",
       DOTNET_NOLOGO: "1",
@@ -30,7 +37,6 @@ describe("childEnv", () => {
     expect(env).toEqual({
       PATH: "/bin",
       HOME: "/home/factory",
-      GH_TOKEN: "gh",
       CLAUDE_CODE_OAUTH_TOKEN: "claude",
       ANTHROPIC_API_KEY: "anthropic",
       DOTNET_NOLOGO: "1",
@@ -53,6 +59,18 @@ describe("what a lane starts", () => {
       expect((await runShellCommand(`"${process.execPath}" -e "${script.replace(/"/g, '\\"')}"`)).stdout).toBe("true");
     } finally {
       for (const k of keys) delete process.env[k];
+    }
+  });
+
+  it("hands the GitHub token only to a program that is started with githubToken", async () => {
+    const show = "process.stdout.write(String(process.env.GH_TOKEN))"; // no inner quotes: it also goes through a shell
+    process.env.GH_TOKEN = "runner-github-token";
+    try {
+      expect((await runProcess(process.execPath, ["-e", show])).stdout).toBe("undefined");
+      expect((await runShellCommand(`"${process.execPath}" -e "${show}"`)).stdout).toBe("undefined");
+      expect((await runProcess(process.execPath, ["-e", show], { githubToken: true })).stdout).toBe("runner-github-token");
+    } finally {
+      delete process.env.GH_TOKEN;
     }
   });
 });

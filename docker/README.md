@@ -32,7 +32,9 @@ separate `CREATE_ISSUE_GITHUB_TOKEN` with Issues: read/write access for creating
 The reverse holds too: `runner` receives only the variables listed under its `environment:` in compose, not the whole `.env`, and
 the processes it starts (the agent, git, `gh`, your project's build and test commands) get a smaller allowlist of those
 (`childEnv` in `runner/src/process.ts`). A variable the runner needs that is not on either list (for example a proxy setting)
-has to be added to both.
+has to be added to both. The GitHub token (`GH_TOKEN`, from `RUNNER_GITHUB_TOKEN`) goes only to the runner's own `gh` calls
+and git's network commands (fetch, push), never to the agent or to your project's build and test commands. A project
+command that needs a GitHub token has to get its own.
 Its code is baked into the image, so rebuild after changes: `docker compose up -d --build`.
 
 ## Dashboard login settings

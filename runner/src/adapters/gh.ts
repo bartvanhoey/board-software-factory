@@ -4,7 +4,7 @@ import { mustRun, runProcess } from "../process.js";
 
 const NO_PROMPT = { GH_PROMPT_DISABLED: "1" };
 
-const gh = (args: string[], input?: string): Promise<string> => mustRun("gh", args, { env: NO_PROMPT, input });
+const gh = (args: string[], input?: string): Promise<string> => mustRun("gh", args, { env: NO_PROMPT, input, githubToken: true });
 
 const UserSchema = z.object({ login: z.string(), id: z.number() });
 const NamesSchema = z.array(z.object({ name: z.string() }));
@@ -36,7 +36,7 @@ export const ghCli: Gh = {
     const result = await runProcess(
       "gh",
       ["label", "create", spec.name, "-R", repo, "--color", spec.color, "--description", spec.description],
-      { env: NO_PROMPT },
+      { env: NO_PROMPT, githubToken: true },
     );
     if (result.code === 0) return "created";
     if (/already exists/i.test(result.stderr)) return "exists";
