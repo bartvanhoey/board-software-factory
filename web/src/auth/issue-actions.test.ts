@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { openDb } from "./db";
 import { createProject } from "./projects";
 import { createSession } from "./sessions";
-import { createUser, grantRole, type Role } from "./users";
+import { createUser, findUserByEmail, grantRole, type Role } from "./users";
 import { createGitHubIssue } from "../lib/github-issues";
 import { createIssueAction } from "./issue-actions";
 
@@ -74,9 +74,51 @@ describe("createIssueAction", () => {
     expect(createIssue).not.toHaveBeenCalled();
   });
 
+  it("lets a member create an issue, but not start factory work on it", async () => {
+    addProject();
+    logIn(makeUser("viewer"));
+    const form = new FormData();
+    form.set("project", "demo");
+    form.set("title", "Issue title");
+    form.set("body", "Description");
+
+    await expect(createIssueAction({}, form)).resolves.toMatchObject({ issue: { number: 42 } });
+    expect(createIssue).toHaveBeenCalledWith("Owner/Demo", "issue-token", "Issue title", "Description", []);
+  });
+
+  it("refuses the ready label from a member, even when the form is posted directly", async () => {
+    addProject();
+    logIn(makeUser("viewer"));
+    const form = new FormData();
+    form.set("project", "demo");
+    form.set("title", "Issue title");
+    form.set("body", "Description");
+    form.set("ready", "on");
+
+    const result = await createIssueAction({}, form);
+    expect(result.error).toContain("Only a project manager or an administrator");
+    expect(result.issue).toBeUndefined();
+    expect(result.values?.ready).toBe(false);
+    expect(createIssue).not.toHaveBeenCalled();
+    expect(db.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'issue.created'").get()).toEqual({ n: 0 });
+  });
+
+  it.each(["issue-admin", "admin"] as const)("lets a %s start factory work with the ready label", async (role) => {
+    addProject(); // creates an admin, which is the one to log in as for the admin case
+    logIn(findUserByEmail(db, `${role}@example.com`)?.id ?? makeUser(role));
+    const form = new FormData();
+    form.set("project", "demo");
+    form.set("title", "Issue title");
+    form.set("body", "Description");
+    form.set("ready", "on");
+
+    await expect(createIssueAction({}, form)).resolves.toMatchObject({ issue: { number: 42 } });
+    expect(createIssue).toHaveBeenCalledWith("Owner/Demo", "issue-token", "Issue title", "Description", ["ready"]);
+  });
+
   it("creates an issue for the selected enabled project and records the actor", async () => {
     addProject();
-    const actor = makeUser("viewer");
+    const actor = makeUser("issue-admin");
     logIn(actor);
     const form = new FormData();
     form.set("project", "demo");

@@ -12,10 +12,13 @@ export interface IssueProjectOption {
 export function CreateIssueForm({
   projects,
   configured,
+  canStartWork,
   initialProject,
 }: {
   projects: readonly IssueProjectOption[];
   configured: boolean;
+  /** Only a project manager or an administrator may add the `ready` label. */
+  canStartWork: boolean;
   initialProject?: string;
 }) {
   const [state, action, pending] = useActionState<CreateIssueState, FormData>(createIssueAction, {});
@@ -90,15 +93,21 @@ export function CreateIssueForm({
           />
         </label>
 
-        <label className="flex items-start gap-2 text-sm">
-          <input className="mt-1" type="checkbox" name="ready" disabled={unavailable || pending} defaultChecked={values?.ready ?? false} />
-          <span>
-            <span className="font-medium">Start factory work</span>
-            <span className="mt-0.5 block text-xs text-muted">
-              Adds the <code>ready</code> label. The factory may start working on this issue. Leave unchecked to create it without starting work.
+        {canStartWork ? (
+          <label className="flex items-start gap-2 text-sm">
+            <input className="mt-1" type="checkbox" name="ready" disabled={unavailable || pending} defaultChecked={values?.ready ?? false} />
+            <span>
+              <span className="font-medium">Start factory work</span>
+              <span className="mt-0.5 block text-xs text-muted">
+                Adds the <code>ready</code> label. The factory may start working on this issue. Leave unchecked to create it without starting work.
+              </span>
             </span>
-          </span>
-        </label>
+          </label>
+        ) : (
+          <p className="text-xs text-muted">
+            The issue is created without starting factory work. A project manager or an administrator labels it <code>ready</code> when it should be built.
+          </p>
+        )}
 
         <div className="flex flex-wrap items-center gap-3">
           <button type="submit" className="btn btn-primary" disabled={unavailable || pending}>

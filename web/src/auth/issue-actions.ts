@@ -6,6 +6,7 @@ import { audit } from "./audit";
 import { getDb } from "./db";
 import { requestContext, requireAccess } from "./dal";
 import { getProject } from "./projects";
+import { hasRole } from "./users";
 import { createGitHubIssue } from "../lib/github-issues";
 
 export interface CreateIssueState {
@@ -21,6 +22,9 @@ const InputSchema = z.object({
   body: z.string().max(65_536, "The description must be 65,536 characters or fewer."),
   ready: z.boolean(),
 });
+
+const READY_DENIED =
+  "Only a project manager or an administrator can start factory work. Create the issue without it and ask one of them to label it ready.";
 
 function value(form: FormData, key: string): string {
   const entry = form.get(key);
@@ -41,6 +45,12 @@ export async function createIssueAction(_previous: CreateIssueState, form: FormD
   const values = valuesOf(form);
   const parsed = InputSchema.safeParse(values);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the issue details.", values };
+
+  // `ready` makes the factory build the issue with its credentials, from text any member can write. A member (viewer)
+  // may create issues, but only a project manager or an administrator may start factory work.
+  if (parsed.data.ready && !hasRole(session.roles, "issue-admin")) {
+    return { error: READY_DENIED, values: { ...values, ready: false } };
+  }
 
   const project = getProject(getDb(), parsed.data.project);
   if (!project || !project.enabled || project.archivedAt !== null) {

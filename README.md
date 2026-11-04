@@ -11,7 +11,7 @@ The factory comes with a web application that shows:
 - **Users:** who may log in, and with which role.
 - **Projects:** the GitHub repositories the factory works on.
 
-Create an issue and optionally label it `ready` (the web form can do both). The factory then:
+Create an issue and optionally label it `ready` (the web form can do both, but only a project manager or an administrator can tick `ready`; a member's issue waits until one of them labels it). The factory then:
 
 1. **Builds** it with Claude Code on its own branch.
 2. **Tests** it.

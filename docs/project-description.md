@@ -90,8 +90,8 @@ Anyone can register, but a new account sees only a "waiting for approval" page u
 | In this README | Role in the app | What it can do |
 | --- | --- | --- |
 | Administrator | `admin` | Everything below, plus the Users and Audit screens, switching projects on and setting their commands |
-| Project manager | `issue-admin` | Sees the board, adds and edits projects, switches them off. Cannot switch one on or set its commands |
-| Member | `viewer` | Sees the whole board and changes nothing |
+| Project manager | `issue-admin` | Sees the board, adds and edits projects, switches them off, and can mark a new issue `ready` for the factory. Cannot switch a project on or set its commands |
+| Member | `viewer` | Sees the whole board and can create issues, but cannot mark one `ready` for the factory |
 
 Sessions last 8 hours idle and 7 days at most. Administrator sessions are shorter: 1 hour idle and 12 hours at most.
 
