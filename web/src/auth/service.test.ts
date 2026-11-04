@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { openDb } from "./db";
-import { hashParams } from "./password";
+import { MAX_CONCURRENT, MAX_WAITING, hashParams, hashPassword } from "./password";
 import { changePassword, login, logout, register, seedAdmin, type Ctx } from "./service";
 import { validateSession } from "./sessions";
 import { countPending, createUser, findUserByEmail, rolesOf } from "./users";
@@ -89,6 +89,20 @@ describe("login", () => {
     const withMfa = await login(db, { email: "user@example.com", password: PW }, ctx({ now: T0 + 1 }));
     if (!withMfa.ok) throw new Error("setup");
     expect(validateSession(db, withMfa.token, T0 + 1)!.mfaPending).toBe(true);
+  });
+
+  it("answers busy when the hash queue is full, without counting the attempt against the account", async () => {
+    // Fill the queue: running plus waiting hashes, all started before any can finish.
+    const fill = Array.from({ length: MAX_CONCURRENT + MAX_WAITING }, () => hashPassword("filler password 1"));
+    const busy = [];
+    for (let i = 0; i < 10; i++) busy.push(login(db, { email: "user@example.com", password: "wrong password " + i }, ctx()));
+    const results = await Promise.all(busy);
+    for (const r of results) expect(r).toEqual({ ok: false, error: "The server is busy. Try again in a moment." });
+    await Promise.all(fill);
+
+    // Ten counted failures would now be blocking this account; refused attempts are not counted.
+    const r = await login(db, { email: "user@example.com", password: PW }, ctx());
+    expect(r.ok).toBe(true);
   });
 
   it("does not hand out a full session when MFA was switched on while the password was being checked", async () => {

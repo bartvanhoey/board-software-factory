@@ -1,10 +1,31 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { hashParams, hashPassword, needsRehash, verifyDummy, verifyPassword } from "./password";
+import { HashQueueFull, MAX_CONCURRENT, MAX_WAITING, hashParams, hashPassword, hashQueueFull, needsRehash, verifyDummy, verifyPassword } from "./password";
 import { checkPassword } from "./policy";
 
 const prod = { ...hashParams };
 beforeAll(() => Object.assign(hashParams, { N: 2 ** 10, r: 8, p: 1 }));
 afterAll(() => Object.assign(hashParams, prod));
+
+describe("hash queue", () => {
+  it("refuses hashes beyond the running and waiting limits instead of queueing without bound", async () => {
+    const total = MAX_CONCURRENT + MAX_WAITING + 10;
+    // All started in one tick, before any hash can finish.
+    const results = await Promise.allSettled(Array.from({ length: total }, () => hashPassword("flood password 1")));
+
+    const refused = results.filter((r) => r.status === "rejected");
+    expect(results.length - refused.length).toBe(MAX_CONCURRENT + MAX_WAITING);
+    expect(refused).toHaveLength(10);
+    for (const r of refused) expect((r as PromiseRejectedResult).reason).toBeInstanceOf(HashQueueFull);
+  });
+
+  it("reports a full queue while it is full, and works normally once it drains", async () => {
+    const batch = Array.from({ length: MAX_CONCURRENT + MAX_WAITING }, () => hashPassword("flood password 2"));
+    expect(hashQueueFull()).toBe(true);
+    await Promise.all(batch);
+    expect(hashQueueFull()).toBe(false);
+    expect(await verifyPassword("after the flood", await hashPassword("after the flood"))).toBe(true);
+  });
+});
 
 describe("password hashing", () => {
   it("verifies the right password and rejects a wrong one", async () => {
