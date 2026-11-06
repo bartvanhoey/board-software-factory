@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.3.1 — 2026-11-06
+
+### 🔒 Security
+- `a233a4c` fix: pass the Claude credential only to the agent process
+
+---
+1 commit (1 pull request) · 5 files changed · 06 Nov 2026
+
 ## v1.3.0 — 2026-11-04
 
 ### 🔒 Security
