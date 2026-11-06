@@ -34,7 +34,8 @@ the processes it starts (the agent, git, `gh`, your project's build and test com
 (`childEnv` in `runner/src/process.ts`). A variable the runner needs that is not on either list (for example a proxy setting)
 has to be added to both. The GitHub token (`GH_TOKEN`, from `RUNNER_GITHUB_TOKEN`) goes only to the runner's own `gh` calls
 and git's network commands (fetch, push), never to the agent or to your project's build and test commands. A project
-command that needs a GitHub token has to get its own.
+command that needs a GitHub token has to get its own. The same goes for the agent's login (`CLAUDE_CODE_OAUTH_TOKEN`,
+`ANTHROPIC_API_KEY`): only the `claude` process gets it, not git, `gh` or your project's build and test commands.
 Its code is baked into the image, so rebuild after changes: `docker compose up -d --build`.
 
 ## Dashboard login settings

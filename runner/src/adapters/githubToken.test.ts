@@ -79,3 +79,19 @@ describe("who gets the GitHub token", () => {
     expect(last().opts.githubToken ?? false).toBe(false);
   });
 });
+
+describe("who gets the agent's credential", () => {
+  it("gives it to the claude process only", async () => {
+    await claudeAgent.run({ cwd: "/wt", prompt: "p", maxTurns: 1, allowedTools: [], disallowedTools: [], logFile: "log", env: {} });
+    expect(last().file).toBe("claude");
+    expect(last().opts.agentCredential).toBe(true);
+
+    await shellRunner.run("npm test", { cwd: "/wt", logFile: "log" });
+    expect(last().opts.agentCredential ?? false).toBe(false);
+
+    spawned.stdout = '{"login":"bot","id":1}';
+    await ghCli.whoami();
+    await gitCli.fetch("/repo", "origin", "main");
+    for (const call of spawned.calls.slice(1)) expect(call.opts.agentCredential ?? false, call.file).toBe(false);
+  });
+});

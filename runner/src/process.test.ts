@@ -3,8 +3,21 @@ import { childEnv, runProcess, runShellCommand } from "./process.js";
 
 describe("childEnv", () => {
   it("drops RUNNER_API_TOKEN and keeps the rest", () => {
-    const env = childEnv({ EXTRA: "1" }, { PATH: "/bin", ANTHROPIC_API_KEY: "key", RUNNER_API_TOKEN: "secret" });
-    expect(env).toEqual({ PATH: "/bin", ANTHROPIC_API_KEY: "key", EXTRA: "1" });
+    const env = childEnv({ EXTRA: "1" }, { PATH: "/bin", ANTHROPIC_MODEL: "m", RUNNER_API_TOKEN: "secret" });
+    expect(env).toEqual({ PATH: "/bin", ANTHROPIC_MODEL: "m", EXTRA: "1" });
+  });
+
+  it("keeps the agent's credential out unless the caller asks for it", () => {
+    const base = {
+      PATH: "/bin",
+      CLAUDE_CODE_OAUTH_TOKEN: "oauth",
+      ANTHROPIC_API_KEY: "key",
+      ANTHROPIC_AUTH_TOKEN: "auth",
+      ANTHROPIC_MODEL: "m",
+    };
+    expect(childEnv(undefined, base)).toEqual({ PATH: "/bin", ANTHROPIC_MODEL: "m" });
+    expect(childEnv(undefined, base, { agentCredential: true })).toEqual(base);
+    expect(childEnv(undefined, { anthropic_api_key: "key" }, { agentCredential: true })).toEqual({ anthropic_api_key: "key" });
   });
 
   it("keeps the GitHub token out unless the caller asks for it", () => {
@@ -37,8 +50,6 @@ describe("childEnv", () => {
     expect(env).toEqual({
       PATH: "/bin",
       HOME: "/home/factory",
-      CLAUDE_CODE_OAUTH_TOKEN: "claude",
-      ANTHROPIC_API_KEY: "anthropic",
       DOTNET_NOLOGO: "1",
     });
   });
@@ -59,6 +70,18 @@ describe("what a lane starts", () => {
       expect((await runShellCommand(`"${process.execPath}" -e "${script.replace(/"/g, '\\"')}"`)).stdout).toBe("true");
     } finally {
       for (const k of keys) delete process.env[k];
+    }
+  });
+
+  it("hands the agent's credential only to a program that is started with agentCredential", async () => {
+    const show = "process.stdout.write(String(process.env.CLAUDE_CODE_OAUTH_TOKEN))";
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = "agent-credential";
+    try {
+      expect((await runProcess(process.execPath, ["-e", show])).stdout).toBe("undefined");
+      expect((await runShellCommand(`"${process.execPath}" -e "${show}"`)).stdout).toBe("undefined");
+      expect((await runProcess(process.execPath, ["-e", show], { agentCredential: true })).stdout).toBe("agent-credential");
+    } finally {
+      delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
     }
   });
 
