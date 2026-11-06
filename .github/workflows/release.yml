@@ -1,8 +1,8 @@
 name: Release
 
 # Builds the image for amd64 and arm64 and pushes it to Docker Hub when a version tag (v1.2.3) is pushed.
-# Needs two repository secrets: DOCKERHUB_USERNAME and DOCKERHUB_TOKEN (a Docker Hub access token with
-# Read & Write permission). It runs CI first (ci.yml) and publishes only if that passes. Actions are pinned to commit
+# Needs two secrets in the `release` environment: DOCKERHUB_USERNAME and DOCKERHUB_TOKEN (a Docker Hub access token
+# with Read & Write permission). It runs CI first (ci.yml) and publishes only if that passes. Actions are pinned to commit
 # SHAs; Dependabot (.github/dependabot.yml) proposes the updates.
 on:
   push:
@@ -10,9 +10,6 @@ on:
 
 permissions:
   contents: read
-
-env:
-  IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/software-factory-board
 
 jobs:
   # The release is not built unless the CI checks pass on the tagged commit.
@@ -22,6 +19,11 @@ jobs:
   publish:
     needs: ci
     runs-on: ubuntu-latest
+    # The Docker Hub secrets live in this environment, which only runs for version tags (see docs/docker-hub-install.md).
+    # They are read here, in the job, because a workflow-level `env:` cannot see environment secrets.
+    environment: release
+    env:
+      IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/software-factory-board
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
