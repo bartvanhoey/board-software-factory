@@ -22,6 +22,11 @@ export interface ProcessOptions {
    * issues and repositories.
    */
   githubToken?: boolean;
+  /**
+   * Pass the agent's credential (CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY) on. Off by default: only the `claude`
+   * process needs it. The project's build and test commands run code from the repository and never do.
+   */
+  agentCredential?: boolean;
 }
 
 function appendLog(file: string | undefined, text: string): void {
@@ -61,8 +66,7 @@ const INHERITED_NAMES = new Set([
   // process basics
   "PATH", "PATHEXT", "HOME", "USER", "LOGNAME", "SHELL", "TERM", "LANG", "TZ", "CI", "TMPDIR", "TMP", "TEMP",
   "USERPROFILE", "APPDATA", "LOCALAPPDATA", "SYSTEMROOT", "WINDIR", "COMSPEC", "PROGRAMFILES", "PROGRAMDATA",
-  // credential for the agent (the GitHub token is separate, see GITHUB_TOKEN_NAME)
-  "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY",
+  // (the agent's credential and the GitHub token are separate, see AGENT_CREDENTIAL_NAME and GITHUB_TOKEN_NAME)
   // tool behaviour set by the image
   "DISABLE_AUTOUPDATER", "NEXT_TELEMETRY_DISABLED",
   // network settings a deployment behind a proxy needs
@@ -71,23 +75,28 @@ const INHERITED_NAMES = new Set([
 const INHERITED_PREFIXES = ["LC_", "DOTNET_", "NUGET_", "NODE_", "NPM_", "GIT_", "GH_", "CLAUDE_CODE_", "ANTHROPIC_"];
 /** GH_TOKEN, GH_ENTERPRISE_TOKEN: only passed on when the caller asks for the GitHub token. */
 const GITHUB_TOKEN_NAME = /^GH_.*TOKEN$/;
+/** The agent's login: only passed on when the caller asks for the agent credential. */
+const AGENT_CREDENTIAL_NAME = /^(CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN)$/;
 
 /**
  * The environment for everything a lane starts (git, gh, the agent, the project's own commands). It is an allowlist:
  * the agent follows instructions found in issues and the project commands are code from the repository, so they get
  * only what they need to run. Anything else in the runner's environment (RUNNER_API_TOKEN, and any secret that ends up
- * there by mistake) is not passed on. The GitHub token is passed only with `githubToken`. `extra` is added as given.
+ * there by mistake) is not passed on. The GitHub token is passed only with `githubToken`, the agent's credential only with
+ * `agentCredential`. `extra` is added as given.
  */
 export function childEnv(
   extra: NodeJS.ProcessEnv | undefined,
   base: NodeJS.ProcessEnv = process.env,
-  { githubToken = false }: { githubToken?: boolean } = {},
+  { githubToken = false, agentCredential = false }: { githubToken?: boolean; agentCredential?: boolean } = {},
 ): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const [name, value] of Object.entries(base)) {
     const key = name.toUpperCase();
     if (GITHUB_TOKEN_NAME.test(key)) {
       if (githubToken) env[name] = value;
+    } else if (AGENT_CREDENTIAL_NAME.test(key)) {
+      if (agentCredential) env[name] = value;
     } else if (INHERITED_NAMES.has(key) || INHERITED_PREFIXES.some((p) => key.startsWith(p))) env[name] = value;
   }
   return { ...env, ...extra };

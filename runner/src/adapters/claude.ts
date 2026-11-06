@@ -7,7 +7,7 @@ export const claudeAgent: AgentRunner = {
     const result = await runProcess(
       "claude",
       ["-p", "--max-turns", String(maxTurns), "--allowedTools", ...allowedTools, "--disallowedTools", ...disallowedTools],
-      { cwd, input: prompt, logFile, env },
+      { cwd, input: prompt, logFile, env, agentCredential: true },
     );
     if (result.code !== 0) throw new Error(`claude exited with code ${result.code}`);
     return result.stdout;
