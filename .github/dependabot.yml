@@ -1,0 +1,7 @@
+# Keeps the commit-SHA pins in .github/workflows current: one pull request per update, with the version in the title.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

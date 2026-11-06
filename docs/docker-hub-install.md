@@ -24,7 +24,7 @@ No source code or build needed: you only need [Docker](https://docs.docker.com/g
 
 ## Publishing a release (maintainers)
 
-Add the repository secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (a Docker Hub access token with Read & Write), then push a version tag. The [Release workflow](../.github/workflows/release.yml) builds the image for `linux/amd64` and `linux/arm64` and pushes it as `<username>/software-factory-board:1.2.3`, `:1.2` and `:latest`.
+Add the repository secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (a Docker Hub access token with Read & Write), then push a version tag. The [Release workflow](../.github/workflows/release.yml) first runs the CI checks on the tagged commit and stops if they fail; otherwise it builds the image for `linux/amd64` and `linux/arm64` and pushes it as `<username>/software-factory-board:1.2.3`, `:1.2` and `:latest`.
 
 ```bash
 git tag v1.0.0 && git push origin v1.0.0
