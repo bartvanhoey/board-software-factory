@@ -102,7 +102,22 @@ function checksOf(pr: z.infer<typeof PrSchema>): ChecksState {
 
 type BranchSource = Pick<ProjectInfo, "repo" | "defaultBranch">;
 
+/**
+ * True for an https://github.com link without credentials or a port, the only kind the board links to. The URLs come
+ * from the API response and end up in `href`, so a `javascript:` URL, another host or a lookalike must not get through.
+ */
+export function isGithubUrl(value: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  return url.protocol === "https:" && url.hostname === "github.com" && url.username === "" && url.password === "" && url.port === "";
+}
+
 function toIssue(project: string, node: IssueNode, now: Date, source?: BranchSource): BoardIssue | null {
+  if (!isGithubUrl(node.url)) return null; // not a GitHub issue link: the card is left off the board
   const labels = node.labels.nodes.map((l) => l.name);
   const prNode = node.closedByPullRequestsReferences?.nodes[0];
 
@@ -117,13 +132,14 @@ function toIssue(project: string, node: IssueNode, now: Date, source?: BranchSou
   const resolved = resolveLane(labels, node.state);
   if (!resolved) return null;
 
-  const pr: BoardPr | null = prNode
+  // A PR with a bad URL is shown without its link (and the card does not fall back to the branch link either).
+  const pr: BoardPr | null = prNode && isGithubUrl(prNode.url)
     ? { number: prNode.number, url: prNode.url, draft: prNode.isDraft, merged: prNode.merged, checks: checksOf(prNode) }
     : null;
 
   // The build lane pushes `issue-<n>` and opens no PR: until the review approves, the work is a branch.
   const branch =
-    source && !pr && (resolved.lane === "qa" || resolved.lane === "review")
+    source && !prNode && (resolved.lane === "qa" || resolved.lane === "review")
       ? {
           name: `issue-${node.number}`,
           compareUrl: `https://github.com/${source.repo}/compare/${source.defaultBranch}...issue-${node.number}`,

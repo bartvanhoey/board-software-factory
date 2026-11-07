@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildQuery, fetchBoards, type FetchLike } from "./github";
+import { buildQuery, fetchBoards, isGithubUrl, type FetchLike } from "./github";
 import type { ProjectInfo } from "./types";
 
 const now = new Date("2026-01-10T12:00:00Z");
@@ -35,6 +35,39 @@ const repo = (o: Partial<Record<"ready" | "building" | "qa" | "review" | "done",
 
 const respond = (body: unknown, status = 200): FetchLike => async () =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+
+describe("isGithubUrl", () => {
+  it("accepts https://github.com links", () => {
+    for (const url of [
+      "https://github.com/o/a/issues/1",
+      "https://github.com/o/a/pull/9",
+      "https://GitHub.com/o/a/issues/1",
+      "https://github.com:443/o/a/issues/1",
+    ])
+      expect(isGithubUrl(url), url).toBe(true);
+  });
+
+  it("rejects other schemes, other hosts, lookalikes and URLs with credentials or a port", () => {
+    for (const url of [
+      "javascript:alert(1)",
+      "data:text/html,<script>1</script>",
+      "http://github.com/o/a/issues/1",
+      "https://evil.example/o/a/issues/1",
+      "https://github.com.evil.example/o/a/issues/1",
+      "https://evil.example/github.com/o/a/issues/1",
+      "https://notgithub.com/o/a/issues/1",
+      "https://github.com@evil.example/o/a/issues/1",
+      "https://user:pass@github.com/o/a/issues/1",
+      "https://user@github.com/o/a/issues/1",
+      "https://github.com:8443/o/a/issues/1",
+      "//github.com/o/a/issues/1",
+      "/o/a/issues/1",
+      "u",
+      "",
+    ])
+      expect(isGithubUrl(url), url).toBe(false);
+  });
+});
 
 describe("buildQuery", () => {
   it("uses one alias and variable pair per project, and never inlines names", () => {
@@ -124,7 +157,7 @@ describe("fetchBoards", () => {
   });
 
   it("keeps only recent factory work in done", async () => {
-    const pr = { number: 5, url: "u", isDraft: false, merged: true };
+    const pr = { number: 5, url: "https://github.com/o/a/pull/5", isDraft: false, merged: true };
     const done = [
       node(10, { state: "CLOSED", closedAt: iso(2 * day), closedByPullRequestsReferences: { nodes: [pr] } }),
       node(11, { state: "CLOSED", closedAt: iso(9 * day), closedByPullRequestsReferences: { nodes: [pr] } }),
@@ -134,6 +167,43 @@ describe("fetchBoards", () => {
     const results = await fetchBoards([a], "t", now, respond({ data: { p0: repo({ done }) } }));
     const r = results[0];
     expect(r?.status === "ok" && r.issues.map((i) => i.number)).toEqual([10, 13]);
+  });
+
+  it("leaves an issue off the board when its URL is not a GitHub link", async () => {
+    const bad = [
+      "javascript:alert(1)",
+      "https://evil.example/o/a/issues/2",
+      "https://github.com.evil.example/o/a/issues/3",
+      "https://github.com@evil.example/o/a/issues/4",
+      "https://user:pass@github.com/o/a/issues/5",
+    ];
+    const ready = [
+      node(1, { labels: labels("ready") }),
+      ...bad.map((url, i) => node(i + 2, { labels: labels("ready"), url })),
+    ];
+    const [result] = await fetchBoards([a], "t", now, respond({ data: { p0: repo({ ready }) } }));
+    if (result?.status !== "ok") throw new Error("expected ok");
+    expect(result.issues.map((i) => i.number)).toEqual([1]);
+    expect(result.issues.map((i) => i.url)).toEqual(["https://github.com/o/a/issues/1"]);
+  });
+
+  it("shows a card without its PR link when the PR URL is not a GitHub link, and not the branch link instead", async () => {
+    const prs = [
+      { number: 7, url: "javascript:alert(1)", isDraft: false, merged: false },
+      { number: 8, url: "https://github.com.evil.example/o/a/pull/8", isDraft: false, merged: false },
+      { number: 9, url: "https://user:pass@github.com/o/a/pull/9", isDraft: false, merged: false },
+      { number: 10, url: "https://evil.example/o/a/pull/10", isDraft: false, merged: false },
+    ];
+    const review = prs.map((pr, i) =>
+      node(20 + i, { labels: labels("review"), closedByPullRequestsReferences: { nodes: [pr] } }),
+    );
+    const [result] = await fetchBoards([a], "t", now, respond({ data: { p0: repo({ review }) } }));
+    if (result?.status !== "ok") throw new Error("expected ok");
+    expect(result.issues).toHaveLength(4);
+    for (const issue of result.issues) {
+      expect(issue.pr).toBeNull();
+      expect(issue.branch).toBeNull();
+    }
   });
 
   it("marks only the failing repo as errored", async () => {
