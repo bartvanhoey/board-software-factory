@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.3.2 — 2026-11-07
+
+### 🔒 Security
+- `139f856` fix(web): only link to https://github.com URLs from the board
+- `d50ac4d` ci: publish from a release environment that only version tags can use
+- `928183a` ci: pin actions to commit SHAs and run CI before the release
+
+---
+3 commits (3 pull requests) · 6 files changed · 06 Nov – 07 Nov 2026
+
 ## v1.3.1 — 2026-11-06
 
 ### 🔒 Security
