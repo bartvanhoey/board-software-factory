@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.3.3 — 2026-11-08
+
+### 🔒 Security
+- `68bb5e7` fix(web): validate the forwarded IP and limit IPv6 clients per /64
+
+---
+1 commit (1 pull request) · 6 files changed · 08 Nov 2026
+
 ## v1.3.2 — 2026-11-07
 
 ### 🔒 Security
