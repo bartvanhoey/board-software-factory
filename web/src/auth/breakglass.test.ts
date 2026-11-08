@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { cleanReason, REASON_MAX, resetMfaByCli, resetPasswordByCli } from "./breakglass";
+import { cleanOperator, cleanReason, OPERATOR_MAX, REASON_MAX, resetMfaByCli, resetPasswordByCli } from "./breakglass";
 import { openDb } from "./db";
 import { confirmSetup, pendingSetup, proveFactor } from "./mfa";
 import { decryptSecret } from "./mfa-crypto";
@@ -73,6 +73,50 @@ describe("cleanReason", () => {
 
   it("accepts ordinary text in any language, with punctuation", () => {
     for (const ok of ["lost phone, ticket #42", "päivä 42 — puhelin hukattu", "紛失した電話", "--- ticket 42"]) expect(cleanReason(ok)).toBe(ok);
+  });
+});
+
+describe("cleanOperator", () => {
+  it("accepts a short name, trimmed, in any language", () => {
+    expect(cleanOperator("  bart  ")).toBe("bart");
+    expect(cleanOperator("x".repeat(OPERATOR_MAX))).toHaveLength(OPERATOR_MAX);
+    for (const ok of ["Bart V.", "päivi", "紛失", "ops-team/oncall"]) expect(cleanOperator(ok)).toBe(ok);
+  });
+
+  it("rejects empty, too long, multi-line, invisible or unreadable names: it ends up in the audit log", () => {
+    for (const bad of ["", "   ", "x".repeat(OPERATOR_MAX + 1), "two\nlines", "tab\there", "nul\u0000", "evil‮name", "zero​width", "line sep", "!!!"])
+      expect(cleanOperator(bad), JSON.stringify(bad)).toBeNull();
+  });
+});
+
+describe("who is recorded in the audit entry", () => {
+  const detail = (action: string) => JSON.parse((db.prepare("SELECT detail FROM audit_log WHERE action = ?").get(action) as { detail: string }).detail);
+
+  it("adds the operator and the container to a reset-mfa entry, and cleans the operator", async () => {
+    await realUser("person@example.com");
+    resetMfaByCli(db, { email: "person@example.com", reason: REASON, operator: "  Bart V  ", container: "c0ffee" }, T0 + STEP);
+    expect(detail("mfa.reset_by_cli")).toEqual({ via: "cli", reason: REASON, operator: "Bart V", container: "c0ffee" });
+  });
+
+  it("adds them to a reset-password entry too", async () => {
+    await realUser("person@example.com");
+    const r = await resetPasswordByCli(db, { email: "person@example.com", reason: REASON, operator: "Dana", container: "abc123" }, T0 + STEP);
+    expect(r.ok).toBe(true);
+    expect(detail("password.reset_by_cli")).toEqual({ via: "cli", reason: REASON, operator: "Dana", container: "abc123" });
+  });
+
+  it("refuses an unusable operator before touching anything, for both commands", async () => {
+    const u = await realUser("person@example.com");
+    const sessionsBefore = db.prepare("SELECT COUNT(*) AS n FROM sessions WHERE user_id = ?").get(u.id);
+    const auditBefore = db.prepare("SELECT COUNT(*) AS n FROM audit_log").get();
+    for (const operator of ["two\nlines", "x".repeat(OPERATOR_MAX + 1), "evil‮name", ""]) {
+      const a = resetMfaByCli(db, { email: "person@example.com", reason: REASON, operator }, T0 + STEP);
+      expect(a, JSON.stringify(operator)).toMatchObject({ ok: false, error: expect.stringContaining("--operator") });
+      const b = await resetPasswordByCli(db, { email: "person@example.com", reason: REASON, operator }, T0 + STEP);
+      expect(b, JSON.stringify(operator)).toMatchObject({ ok: false, error: expect.stringContaining("--operator") });
+    }
+    expect(db.prepare("SELECT COUNT(*) AS n FROM audit_log").get()).toEqual(auditBefore);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM sessions WHERE user_id = ?").get(u.id)).toEqual(sessionsBefore);
   });
 });
 

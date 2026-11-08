@@ -165,9 +165,9 @@ describe("environment", () => {
 });
 
 describe("reset-mfa", () => {
-  async function adminWithMfa(): Promise<void> {
+  async function adminWithMfa(email = "admin@example.com"): Promise<void> {
     const db = openDb(dbPath);
-    const id = createUser(db, { email: "admin@example.com", passwordHash: "x" });
+    const id = createUser(db, { email, passwordHash: "x" });
     grantRole(db, id, "admin", null);
     db.prepare("UPDATE users SET mfa_required = 1, mfa_enabled_at = 1, mfa_secret_enc = 'v1.x.y.z' WHERE id = ?").run(id);
     db.prepare("INSERT INTO recovery_codes (user_id, code_hash) VALUES (?, 'h')").run(id);
@@ -176,7 +176,7 @@ describe("reset-mfa", () => {
 
   it("removes an admin's MFA, tells the operator what happens next and audits it", async () => {
     await adminWithMfa();
-    const r = await cli("reset-mfa", "--email", "Admin@Example.com", ...REASON);
+    const r = await cliWith({ host: "c0ffee" }, "reset-mfa", "--email", "Admin@Example.com", ...REASON);
     expect(r.code).toBe(EXIT.ok);
     expect(r.out).toContain("MFA removed for admin@example.com");
     expect(r.out).toContain("must set MFA up again");
@@ -185,9 +185,82 @@ describe("reset-mfa", () => {
     const db = openDb(dbPath);
     expect(db.prepare("SELECT mfa_enabled_at, mfa_secret_enc FROM users").get()).toEqual({ mfa_enabled_at: null, mfa_secret_enc: null });
     expect(db.prepare("SELECT action, actor_user_id, detail FROM audit_log").all()).toEqual([
-      { action: "mfa.reset_by_cli", actor_user_id: null, detail: JSON.stringify({ via: "cli", reason: "lost phone, ticket 42" }) },
+      {
+        action: "mfa.reset_by_cli",
+        actor_user_id: null,
+        detail: JSON.stringify({ via: "cli", reason: "lost phone, ticket 42", operator: "not given", container: "c0ffee" }),
+      },
     ]);
     db.close();
+  });
+
+  describe("who ran it", () => {
+    const detailOfLastEntry = (): Record<string, string> => {
+      const db = openDb(dbPath);
+      const row = db.prepare("SELECT detail FROM audit_log ORDER BY id DESC LIMIT 1").get() as { detail: string };
+      db.close();
+      return JSON.parse(row.detail) as Record<string, string>;
+    };
+
+    it("records --operator and the container id, in either form of the flag", async () => {
+      await adminWithMfa();
+      expect((await cliWith({ host: "c0ffee" }, "reset-mfa", "--email", "admin@example.com", ...REASON, "--operator", "Bart V")).code).toBe(EXIT.ok);
+      expect(detailOfLastEntry()).toEqual({ via: "cli", reason: "lost phone, ticket 42", operator: "Bart V", container: "c0ffee" });
+
+      await adminWithMfa("second@example.com");
+      expect((await cliWith({ host: "c0ffee" }, "reset-mfa", "--email", "second@example.com", ...REASON, "--operator=Dana")).code).toBe(EXIT.ok);
+      expect(detailOfLastEntry()).toMatchObject({ operator: "Dana" });
+    });
+
+    it("falls back to the OPERATOR variable, lets the flag win, and says 'not given' otherwise", async () => {
+      await adminWithMfa();
+      env.OPERATOR = "from-env";
+      expect((await cliWith({ host: "h" }, "reset-mfa", "--email", "admin@example.com", ...REASON)).code).toBe(EXIT.ok);
+      expect(detailOfLastEntry()).toMatchObject({ operator: "from-env" });
+
+      await adminWithMfa("second@example.com");
+      expect((await cliWith({ host: "h" }, "reset-mfa", "--email", "second@example.com", ...REASON, "--operator", "from-flag")).code).toBe(EXIT.ok);
+      expect(detailOfLastEntry()).toMatchObject({ operator: "from-flag" });
+
+      await adminWithMfa("third@example.com");
+      env.OPERATOR = "  ";
+      expect((await cliWith({ host: "h" }, "reset-mfa", "--email", "third@example.com", ...REASON)).code).toBe(EXIT.ok);
+      expect(detailOfLastEntry()).toMatchObject({ operator: "not given" });
+    });
+
+    it("records it for reset-password too", async () => {
+      await adminWithMfa();
+      const r = await cliWith({ host: "c0ffee" }, "reset-password", "--email", "admin@example.com", ...REASON, "--operator", "Bart V");
+      expect(r.code).toBe(EXIT.ok);
+      expect(detailOfLastEntry()).toEqual({ via: "cli", reason: "lost phone, ticket 42", operator: "Bart V", container: "c0ffee" });
+      expect(r.out).not.toContain("Bart V"); // an audit label, not output
+    });
+
+    it("refuses an operator name that could disguise an audit entry, from the flag or the variable, and changes nothing", async () => {
+      await adminWithMfa();
+      for (const bad of ["two\nlines", "x".repeat(65), "evil‮name", "zero​width", "!!!", ""]) {
+        const r = await cliWith({}, "reset-mfa", "--email", "admin@example.com", ...REASON, `--operator=${bad}`);
+        expect(r.code, JSON.stringify(bad)).toBe(EXIT.refused);
+        expect(r.err).toContain("--operator");
+      }
+      env.OPERATOR = "two\nlines";
+      expect((await cli("reset-mfa", "--email", "admin@example.com", ...REASON)).code).toBe(EXIT.refused);
+
+      const db = openDb(dbPath);
+      expect(db.prepare("SELECT COUNT(*) AS n FROM audit_log").get()).toEqual({ n: 0 });
+      expect(db.prepare("SELECT mfa_enabled_at FROM users WHERE email = 'admin@example.com'").get()).toEqual({ mfa_enabled_at: 1 });
+      db.close();
+    });
+
+    it("needs a value after --operator", async () => {
+      const r = await cli("reset-mfa", "--email", "a@example.com", ...REASON, "--operator");
+      expect(r.code).toBe(EXIT.usage);
+      expect(r.err).toContain("--operator needs a value");
+    });
+
+    it("documents the flag in the usage text", async () => {
+      expect((await cli("--help")).out).toContain("--operator <name>");
+    });
   });
 
   it("says so, with exit 0, when there is nothing to reset", async () => {

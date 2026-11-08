@@ -1,8 +1,10 @@
 // The break-glass command: recovery from the server when the web app cannot help (an admin who lost their
 // authenticator, or the only admin who forgot their password). Run inside the web container:
 //   docker compose exec web npm run admin -- reset-mfa --email <email> --reason "<why>"
-// Access to the server is the authorisation; every change is audited with the reason and no actor.
+// Access to the server is the authorisation; every change is audited with the reason, the operator name the person
+// gave (--operator, or the OPERATOR variable) and the container it ran in, but no actor: the name is a label, not proof.
 import { statSync } from "node:fs";
+import { hostname } from "node:os";
 import type { DatabaseSync } from "node:sqlite";
 import { resetMfaByCli, resetPasswordByCli } from "../auth/breakglass";
 import { authDbPath } from "../auth/config";
@@ -15,7 +17,7 @@ export interface Io {
   err: (line: string) => void;
 }
 
-export const USAGE = `Usage: npm run admin -- <command> --email <email> --reason "<why>"
+export const USAGE = `Usage: npm run admin -- <command> --email <email> --reason "<why>" [--operator <name>]
 
 Commands:
   reset-mfa        Remove the user's MFA (authenticator and recovery codes) and end their sessions.
@@ -26,15 +28,18 @@ Commands:
 Options:
   --email <email>  The account (must exist).
   --reason <text>  Why, one line, up to 200 characters. Recorded in the audit log.
-  --help           Show this text (as the first argument).
+  --operator <name>
+                   Who you are, one line, up to 64 characters. Recorded in the audit log together with the
+                   container id. Defaults to the OPERATOR variable, else "not given". A label, not proof.
+  --help          Show this text (as the first argument).
 
 Exit codes: 0 done (or nothing to do), 1 refused (unknown account, unusable reason), 64 usage, 69 database or environment.`;
 
 const COMMANDS = ["reset-mfa", "reset-password"] as const;
-const FLAGS = ["--email", "--reason"] as const;
+const FLAGS = ["--email", "--reason", "--operator"] as const;
 const isFlag = (s: string): boolean => (FLAGS as readonly string[]).includes(s);
 
-type Parsed = { ok: true; command: (typeof COMMANDS)[number]; email: string; reason: string } | { ok: false; error: string } | { ok: "help" };
+type Parsed = { ok: true; command: (typeof COMMANDS)[number]; email: string; reason: string; operator: string | undefined } | { ok: false; error: string } | { ok: "help" };
 
 function parse(argv: string[]): Parsed {
   // Only the first argument asks for help: "--reason -h" is a reason, and a script must not read it as success.
@@ -61,7 +66,7 @@ function parse(argv: string[]): Parsed {
   const reason = values.get("--reason");
   if (!email) return { ok: false, error: "--email is required." };
   if (!reason || !reason.trim()) return { ok: false, error: "--reason is required: say why, it goes in the audit log." };
-  return { ok: true, command: command as (typeof COMMANDS)[number], email, reason };
+  return { ok: true, command: command as (typeof COMMANDS)[number], email, reason, operator: values.get("--operator") };
 }
 
 const { DatabaseSync: Sqlite } = process.getBuiltinModule("node:sqlite");
@@ -100,6 +105,8 @@ export interface RunOptions {
   now?: number;
   /** The user id the process runs as. Defaults to the real one; injectable for tests. */
   uid?: number | undefined;
+  /** The container's hostname, recorded in the audit entry. Defaults to the real one; injectable for tests. */
+  host?: string;
 }
 
 export async function run(argv: string[], env: Record<string, string | undefined>, io: Io, opts: RunOptions = {}): Promise<number> {
@@ -127,7 +134,9 @@ export async function run(argv: string[], env: Record<string, string | undefined
     const dbPath = authDbPath(env);
     requireAuthDatabase(dbPath);
     db = openDb(dbPath);
-    const input = { email: args.email, reason: args.reason };
+    // --operator wins, then the OPERATOR variable (an empty one counts as unset), else it says it was not given.
+    const operator = args.operator ?? (env.OPERATOR?.trim() ? env.OPERATOR : "not given");
+    const input = { email: args.email, reason: args.reason, operator, container: opts.host ?? hostname() };
 
     let lines: string[];
     let failed: string;
