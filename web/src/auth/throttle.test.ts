@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { openDb } from "./db";
 import { gateRedirect } from "./gating";
-import { clientIp, sessionCookieName } from "./request";
+import { clientIp, ipKey, normalizeIp, sessionCookieName } from "./request";
 import { consume, delayFor, recordFailure, releaseFailure, resetFailures, retryAfter } from "./throttle";
 
 let db: ReturnType<typeof openDb>;
@@ -105,6 +105,36 @@ describe("request helpers", () => {
     expect(clientIp(h("9.9.9.9, 1.2.3.4"), true)).toBe("1.2.3.4");
     expect(clientIp(h(null), true)).toBeNull();
     expect(clientIp(h("<script>"), true)).toBeNull();
+  });
+
+  it("accepts only real IP addresses from the header", () => {
+    const h = (v: string) => () => v;
+    for (const junk of ["1.2.3.4.5", "256.1.1.1", "01.2.3.4", ":::", "1:2:3:4:5:6:7:8:9", "fe80::1%eth0", "1.2.3.4:80", "evil.example", "", "1.2.3.4,", "0x7f.1"])
+      expect(clientIp(h(junk), true), junk).toBeNull();
+    expect(clientIp(h("9.9.9.9, 1.2.3.4 "), true)).toBe("1.2.3.4");
+    expect(clientIp(h("1.2.3.4, 2001:db8::1"), true)).toBe("2001:db8::1");
+  });
+
+  it("returns one spelling per address", () => {
+    const h = (v: string) => () => v;
+    expect(clientIp(h("2001:DB8:0:0:0:0:0:1"), true)).toBe("2001:db8::1");
+    expect(clientIp(h("2001:db8::0:1"), true)).toBe("2001:db8::1");
+    expect(clientIp(h("::ffff:1.2.3.4"), true)).toBe("1.2.3.4");
+    expect(clientIp(h("::FFFF:102:304"), true)).toBe("1.2.3.4");
+    expect(clientIp(h("::1"), true)).toBe("::1");
+    expect(normalizeIp("1.2.3.4")).toBe("1.2.3.4");
+    expect(normalizeIp("not an ip")).toBeNull();
+  });
+
+  it("keys IPv6 by its /64 and IPv4 by its address", () => {
+    expect(ipKey("1.2.3.4")).toBe("1.2.3.4");
+    expect(ipKey("2001:db8:1:2::1")).toBe("2001:db8:1:2::/64");
+    expect(ipKey("2001:db8:1:2:ffff:ffff:ffff:ffff")).toBe("2001:db8:1:2::/64");
+    expect(ipKey("2001:DB8:1:2:0:0:0:5")).toBe("2001:db8:1:2::/64");
+    expect(ipKey("2001:db8:1:3::1")).not.toBe(ipKey("2001:db8:1:2::1"));
+    expect(ipKey("2001:db8::1")).toBe("2001:db8:0:0::/64");
+    expect(ipKey("::1")).toBe("0:0:0:0::/64");
+    expect(ipKey("::ffff:1.2.3.4")).toBe("1.2.3.4"); // a mapped address is an IPv4 client
   });
 
   it("uses a __Host- cookie only when Secure", () => {
