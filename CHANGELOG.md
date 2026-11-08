@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.3.4 — 2026-11-08
+
+### 🔒 Security
+- `65e5491` feat(web): record an operator name and the container id for break-glass changes
+- `66eba6c` fix(web): warn at startup when ADMIN_PASSWORD is left set after the first admin exists
+
+---
+2 commits (2 pull requests) · 8 files changed · 08 Nov 2026
+
 ## v1.3.3 — 2026-11-08
 
 ### 🔒 Security
