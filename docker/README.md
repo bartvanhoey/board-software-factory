@@ -125,8 +125,8 @@ password), run the recovery command inside the `web` container. Access to the se
 no login:
 
 ```
-docker compose exec web npm run admin -- reset-mfa      --email <email> --reason "<why>"
-docker compose exec web npm run admin -- reset-password --email <email> --reason "<why>"
+docker compose exec web npm run admin -- reset-mfa      --email <email> --reason "<why>" --operator "$(whoami)"
+docker compose exec web npm run admin -- reset-password --email <email> --reason "<why>" --operator "$(whoami)"
 ```
 
 - `reset-mfa` removes the user's authenticator, any half-finished setup and recovery codes, and ends all their
@@ -139,8 +139,13 @@ docker compose exec web npm run admin -- reset-password --email <email> --reason
   log in with just the old password until MFA is set up again, and whoever logs in first sets up their own authenticator.
 - `--reason` is required: one line, up to 200 characters, with some real text in it and no control or invisible
   characters. Every change is recorded in the audit log as `mfa.reset_by_cli` or `password.reset_by_cli`, with no
-  actor, `via: "cli"` and your reason. Runs that change nothing, or are refused (unknown account, unusable reason), are
-  not recorded.
+  actor, `via: "cli"`, your reason, your operator name and the container id. Runs that change nothing, or are refused
+  (unknown account, unusable reason or operator), are not recorded.
+- `--operator <name>` is optional (one line, up to 64 characters; without it the `OPERATOR` variable is used, else the
+  entry says `not given`). It is a label you give yourself, **not proof of who ran the command**: inside the container
+  nobody can tell who sits at the Docker host (the command always runs as the container's own user). To find out who
+  really ran it, match the entry's time and `container` id against the host's own records, for example
+  `docker events --since <time> --filter container=<id>` (look for `exec_create`) or auditd on the host.
 - It only runs against an existing, non-empty auth database, so a mistyped `AUTH_DB_PATH` cannot create an empty one,
   and it needs no other setting (a broken SMTP value, say, does not block a recovery). It refuses to run as root, which
   could leave database files the web app cannot write: use `docker compose exec` without `-u root`. Exit codes: 0 done
