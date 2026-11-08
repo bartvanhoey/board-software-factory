@@ -6,6 +6,7 @@ import { consumeToken, discardToken, issueToken, peekToken, voidOtherTokens, voi
 import type { Mail, Mailer } from "./mail";
 import { hashPassword } from "./password";
 import { checkPassword } from "./policy";
+import { ipKey } from "./request";
 import { acctThrottleKey } from "./service";
 import { revokeSessions } from "./sessions";
 import { consume, resetFailures } from "./throttle";
@@ -78,7 +79,7 @@ type Allowed = "ok" | "slow" | "busy";
  * frequent must not use up the budget everyone else shares.
  */
 function allow(db: DatabaseSync, ctx: MailCtx, addressKey: string, budgetKey: string, now: number): Allowed {
-  if (ctx.ip && !consume(db, `mail:ip:${ctx.ip}`, PER_IP_PER_HOUR, HOUR, now)) return "slow";
+  if (ctx.ip && !consume(db, `mail:ip:${ipKey(ctx.ip)}`, PER_IP_PER_HOUR, HOUR, now)) return "slow";
   if (!consume(db, `${addressKey}:min`, 1, MINUTE, now)) return "slow";
   if (!consume(db, `${addressKey}:hour`, PER_ADDRESS_PER_HOUR, HOUR, now)) return "slow";
   return consume(db, budgetKey, BUDGET_PER_HOUR, HOUR, now) ? "ok" : "busy";

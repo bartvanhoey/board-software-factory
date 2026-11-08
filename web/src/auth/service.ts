@@ -5,6 +5,7 @@ import { audit } from "./audit";
 import { transaction } from "./db";
 import { HashQueueFull, hashPassword, hashQueueFull, needsRehash, verifyDummy, verifyPassword } from "./password";
 import { checkPassword } from "./policy";
+import { ipKey } from "./request";
 import { createSession, deleteSession, purgeExpired, revokeSessions, validateSession } from "./sessions";
 import { consume, recordFailure, releaseFailure, resetFailures, retryAfter } from "./throttle";
 import { countAdmins, countPending, createUser, findUserByEmail, findUserById, grantRole, isPlainAddress, normalizeEmail } from "./users";
@@ -59,7 +60,7 @@ export async function register(db: DatabaseSync, input: { email: string; passwor
   if (countPending(db) >= PENDING_CAP) return { ok: false, error: "Registration is temporarily closed." };
 
   const allowed = ctx.ip
-    ? consume(db, `register:ip:${ctx.ip}`, REGISTER_PER_IP, HOUR, now)
+    ? consume(db, `register:ip:${ipKey(ctx.ip)}`, REGISTER_PER_IP, HOUR, now)
     : consume(db, "register:global", REGISTER_GLOBAL, HOUR, now);
   if (!allowed) return { ok: false, error: "Too many registrations. Try again later." };
 
@@ -83,7 +84,7 @@ export async function login(db: DatabaseSync, input: { email: string; password: 
   const now = ctx.now ?? Date.now();
   const email = normalizeEmail(input.email);
   const acctKey = acctThrottleKey(email ?? input.email);
-  const keys = [acctKey, ...(ctx.ip ? [`login:ip:${ctx.ip}`] : [])];
+  const keys = [acctKey, ...(ctx.ip ? [`login:ip:${ipKey(ctx.ip)}`] : [])];
 
   const blocked = Math.max(...keys.map((k) => retryAfter(db, k, now)));
   if (blocked > 0) return { ok: false, error: wait(blocked) };

@@ -142,6 +142,25 @@ describe("login", () => {
     expect((await login(db, { email: "user@example.com", password: PW }, ctx({ ip: "4.4.4.4" }))).ok).toBe(true);
   });
 
+  it("counts an IPv6 client per /64, so rotating addresses inside it does not dodge the IP limit", async () => {
+    for (let i = 0; i < 5; i++) await login(db, { email: `x${i}@example.com`, password: PW }, ctx({ ip: `2001:db8:1:2::${i + 1}` }));
+    expect(await login(db, { email: "user@example.com", password: PW }, ctx({ ip: "2001:db8:1:2:aaaa:bbbb:cccc:dddd" }))).toMatchObject({
+      error: expect.stringContaining("Too many attempts"),
+    });
+    // another /64 is another client
+    expect((await login(db, { email: "user@example.com", password: PW }, ctx({ ip: "2001:db8:1:3::1" }))).ok).toBe(true);
+  });
+
+  it("limits registrations per /64 for IPv6, and records the full address in the audit log", async () => {
+    for (let i = 0; i < 5; i++) expect((await register(db, { email: `v${i}@example.com`, password: PW }, ctx({ ip: `2001:db8:9:9::${i + 1}` }))).ok).toBe(true);
+    expect(await register(db, { email: "v9@example.com", password: PW }, ctx({ ip: "2001:db8:9:9:1:2:3:4" }))).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("Too many"),
+    });
+    const ips = (db.prepare("SELECT ip FROM audit_log WHERE action = 'user.registered' AND ip IS NOT NULL ORDER BY id").all() as { ip: string }[]).map((r) => r.ip);
+    expect(ips).toEqual(["2001:db8:9:9::1", "2001:db8:9:9::2", "2001:db8:9:9::3", "2001:db8:9:9::4", "2001:db8:9:9::5"]);
+  });
+
   it("does not let a login that was hashing survive a password reset that landed meanwhile", async () => {
     const inFlight = login(db, { email: "user@example.com", password: PW }, ctx()); // reads the row, then waits on scrypt
     db.prepare("UPDATE users SET password_hash = 'scrypt$1024$8$1$aa$bb' WHERE email = 'user@example.com'").run();
