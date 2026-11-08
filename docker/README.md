@@ -50,7 +50,7 @@ Windows folder is unreliable. Back up the volume, and keep `MFA_ENCRYPTION_KEY` 
 | Variable | Required | Default | Notes |
 | --- | --- | --- | --- |
 | `MFA_ENCRYPTION_KEY` | yes | | 32 random bytes, base64. Encrypts MFA secrets at rest. Lose it and every user must re-enroll MFA. Generate: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` |
-| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | no | | First admin, created on first start only when no admin exists. Set both or neither; password 12-128 characters. Remove `ADMIN_PASSWORD` from `.env` afterwards. |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | no | | First admin, created on first start only when no admin exists. Set both or neither; password 12-128 characters. Remove `ADMIN_PASSWORD` from `.env` afterwards (and run `docker compose up -d`): while it is still set and an admin exists, every start logs a warning saying so. |
 | `EMAIL_VERIFICATION` | no | `false` | `true` turns on email verification and "forgot password" by email (see "Email verification" below) and makes `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` and `APP_URL` required. |
 | `APP_URL` | with verification | | The public address of the site, an origin with no path (`https://board.example.com`), used for every link in an email. `https` is required except for `localhost`. It is never taken from the request, which a visitor controls. |
 | `COOKIE_SECURE` | no | on in production | Set `false` for plain http on localhost. Exposing the dashboard beyond localhost needs a TLS proxy. |

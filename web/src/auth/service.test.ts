@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { openDb } from "./db";
 import { MAX_CONCURRENT, MAX_WAITING, hashParams, hashPassword } from "./password";
-import { changePassword, login, logout, register, seedAdmin, type Ctx } from "./service";
+import { changePassword, leftoverAdminPasswordNotice, login, logout, register, seedAdmin, type Ctx } from "./service";
 import { validateSession } from "./sessions";
 import { countPending, createUser, findUserByEmail, rolesOf } from "./users";
 
@@ -321,5 +321,24 @@ describe("seedAdmin", () => {
 
   it("rejects a common admin password", async () => {
     await expect(seedAdmin(db, { email: admin.email, password: "passwordpassword" })).rejects.toThrow(/too common/);
+  });
+
+  it("warns to remove ADMIN_PASSWORD once an admin exists, and only then", async () => {
+    // first start: the password was used, nothing to warn about yet
+    expect(leftoverAdminPasswordNotice(await seedAdmin(db, admin))).toBeNull();
+    // every later start with the variable still set
+    const notice = leftoverAdminPasswordNotice(await seedAdmin(db, admin));
+    expect(notice).toContain("ADMIN_PASSWORD is still set");
+    expect(notice).toContain("Remove ADMIN_PASSWORD from .env");
+    expect(notice).not.toContain(admin.password);
+    expect(notice).not.toContain(admin.email);
+  });
+
+  it("does not warn when there is no ADMIN_PASSWORD, or the email belongs to a normal account", async () => {
+    expect(leftoverAdminPasswordNotice(await seedAdmin(db, null))).toBeNull();
+    await register(db, { email: admin.email, password: PW }, ctx());
+    expect(await seedAdmin(db, admin)).toBe("email-taken");
+    expect(leftoverAdminPasswordNotice("email-taken")).toBeNull();
+    expect(leftoverAdminPasswordNotice("seeded")).toBeNull();
   });
 });

@@ -186,6 +186,17 @@ export async function changePassword(
 export type SeedResult = "seeded" | "no-config" | "admin-exists" | "email-taken";
 
 /**
+ * A warning for the log when ADMIN_PASSWORD is configured but an admin already exists: it is then not used, and a
+ * password that stays in .env (and in the container's environment) would create an admin again if the admin rows
+ * ever disappear, for example after a restored database. Null for every other outcome. Never contains the password.
+ */
+export function leftoverAdminPasswordNotice(result: SeedResult): string | null {
+  return result === "admin-exists"
+    ? "[auth] ADMIN_PASSWORD is still set, but an admin already exists, so it is not used. Remove ADMIN_PASSWORD from .env and run `docker compose up -d`: it is only needed for the first start."
+    : null;
+}
+
+/**
  * Creates the first admin from ADMIN_EMAIL/ADMIN_PASSWORD, only when no admin exists. It never touches an
  * existing account. Remove ADMIN_PASSWORD from .env after the first start: while no admin exists (for example
  * after the only one was deleted) the variable would create one again.

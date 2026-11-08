@@ -1,6 +1,6 @@
 import { ConfigError, loadAuthConfig, loadRunnerToken } from "./auth/config";
 import { getDb } from "./auth/db";
-import { seedAdmin } from "./auth/service";
+import { leftoverAdminPasswordNotice, seedAdmin } from "./auth/service";
 
 /**
  * Validates the auth config, opens and migrates auth.db and seeds the first admin before serving.
@@ -17,6 +17,8 @@ export async function startAuth(): Promise<void> {
     const db = getDb();
     const seeded = await seedAdmin(db, config.admin);
     if (seeded === "seeded") console.log(`[auth] created the first admin ${config.admin?.email}; it must change its password at first login`);
+    const leftover = leftoverAdminPasswordNotice(seeded);
+    if (leftover) console.warn(leftover);
     if (seeded === "email-taken") console.warn(`[auth] ADMIN_EMAIL is already registered as a normal account and no admin exists; nothing was changed`);
   } catch (err) {
     console.error(err instanceof ConfigError ? err.message : `auth.db failed to start: ${err instanceof Error ? err.message : String(err)}`);
